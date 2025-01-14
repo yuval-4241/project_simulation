@@ -85,16 +85,16 @@ def sampleStayDuration ():
     Generate a random sample for stay duration.
     """
     u = np.random.uniform()
-    if u <0 and u<=0.25 :
-      return 1
-    elif u >  0.25 and u <= 0.71 :
-      return 2
-    elif u > 0.71 and u <= 0.96 :
-      return 3
-    elif u > 0.91 and u <= 0.96 :
-      return 4
-    else:
-       return 5
+    if u <= 0.25:  # 0 עד 0.25
+        return 1
+    elif u <= 0.25 + 0.46:  # 0.25 עד 0.71
+        return 2
+    elif u <= 0.25 + 0.46 + 0.2:  # 0.71 עד 0.91
+        return 3
+    elif u <= 0.25 + 0.46 + 0.2 + 0.05:  # 0.91 עד 0.96
+        return 4
+    else:  # 0.96 עד 1
+        return 5
 
 def sampleCheckIn():
     """
@@ -159,11 +159,23 @@ def sampleCustomerArrival(hotel, H=7, R_available=120):
     TOTAL_ROOMS = 110
 
     # Calculate hotel metrics
-    H = hotel.calculate_average_rating() or 7  # דירוג ממוצע
-    R_available = max(1, hotel.count_free_rooms()) or 120 # חדרים פנויים
+    H = 7  # דירוג ממוצע
+    R_available = 110 # חדרים פנויים
 
     # Compute lambda
     lambda_value = ALPHA * ((R_available / TOTAL_ROOMS) ** BETA1) * ((H / 10) ** BETA2)
 
     # Sample the inter-arrival time
     return np.random.exponential(1 / lambda_value) if lambda_value > 0 else float('inf')
+
+
+
+
+
+def sampleCustomerArrival(lambda_val):
+    """
+    Generate a time for the next customer arrival based on the hotel's current state.
+    """
+    if lambda_val is None or lambda_val == 0:
+      return float('inf')  # אם אין לקוחות מגיעים, זמן ההגעה הבא הוא אינסופי
+    return sampleExponential(lambda_val)
