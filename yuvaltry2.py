@@ -273,6 +273,71 @@ class Booking:
         print(f"Total group expenses: {total_expenses}")
         return total_expenses
 
+class Facilities:  # spa, pool, and breakfast activities
+    def __init__(self, activityType, maxCapacity):
+        self.activityType = activityType  # Type of the activity (e.g., spa, pool, breakfast)
+        self.maxCapacity = maxCapacity  # Maximum capacity of the activity
+        self.currentOccupancy = 0  # Current number of participants
+        self.activityQueue = []  # Queue for guests waiting to participate
+        self.groupListActivity = []  # List of groups currently in the activity
+
+    def checkActivityAvailability(self, booking):
+        """
+        Check if the activity has enough capacity for a customer or group.
+        """
+        requiredCapacity = booking.getGroupLength()
+        return self.currentOccupancy + requiredCapacity <= self.maxCapacity
+
+    def checkIfQueueIsNotEmpty(self):
+        """
+        Check if there are guests in the queue.
+        """
+        return len(self.activityQueue) > 0
+
+    def addCustomerToActivity(self, booking):
+        """
+        Add a customer or group to the activity if there is enough capacity.
+        """
+
+        requiredCapacity = booking.getGroupLength()
+        self.currentOccupancy += requiredCapacity
+
+
+    def endCustomerActivity(self, booking):
+        """
+        Remove a customer or group from the activity and free up capacity.
+        """
+        requiredCapacity = booking.getGroupLength()
+        self.currentOccupancy -= requiredCapacity
+
+
+    def checkIfInQueue(self, customer):
+        """
+        Check if a customer is in the queue.
+        """
+        return customer in self.activityQueue
+
+    def addToActivityQueue(self, customer):
+        """
+        Add a customer to the queue.
+        """
+        if customer not in self.activityQueue:
+            self.activityQueue.append(customer)
+
+    def removeFromQueue(self, customer):
+        """
+        Remove a customer from the queue.
+        """
+        if customer in self.activityQueue:
+            self.activityQueue.remove(customer)
+
+class Spa(Facilities):
+    def __init__(self):
+        super().__init__(activityType="Spa", maxCapacity=30)
+
+class Pool(Facilities):
+    def __init__(self):
+        super().__init__(activityType="Pool", maxCapacity=50)
 
 
 class Hotel:
@@ -312,8 +377,12 @@ class Hotel:
          # Initial rank of the hotel
 
         self.rank_feedback = []#used
-
+###########facilities####
         self.facilities = self.initializeFacilities()
+        self.count_of_booking_go_to_pool_firstday=0#todo:delete
+        self.count_of_booking_dont_go_to_pool_firstday = 0#todo:delete
+
+
 
 ############rooms check in and check out#####################################################
     def check_and_assign_room(self, booking):
@@ -500,8 +569,22 @@ class Hotel:
         return 1 if self.count_free_rooms() > 0 else 0
 
 ##################################facalities#####################################
+    def initializeFacilities(self):
+        """
+        Create facilities including the pool and spa.
+        """
+        return {
+            "pool": Pool(),  # בריכה עם 50 מקומות
+            "spa": Spa()  # ספא עם 30 מקומות
+        }
 
-
+    def getFacility(self, facility_name):
+        """
+        Get a specific facility by name.
+        :param facility_name: שם המתקן (pool, spa).
+        :return: אובייקט המתקן או None אם לא קיים.
+        """
+        return self.facilities.get(facility_name)
 
 
 import heapq

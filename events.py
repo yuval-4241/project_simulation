@@ -37,6 +37,10 @@ class closeHotelDayEvent(Event):
 
         available_rooms=simulation.Hotel.count_free_rooms()
         print(f"The total rooms occipud for the end of the day  : {current_date } is: {110-available_rooms}")
+        print(f"the total people who did check in today is {simulation.Hotel.count_people_checkin }")
+        print(f"The total groups go to pool after checkin first day : {simulation.Hotel.count_of_booking_go_to_pool_firstday} ")#todo:delete
+        print(
+            f"The total groups dont go to pool after checkin first day : {simulation.Hotel.count_of_booking_dont_go_to_pool_firstday} ")#todo:delete
         available_rooms_nextday = simulation.Hotel.calculateAvailableRoomsByTypeAtMidnight(current_date + 1)
         simulation.Hotel.update_daily_rank()
         current_lamda= simulation.Hotel.calculate_lambda(available_rooms)
@@ -49,6 +53,9 @@ class closeHotelDayEvent(Event):
         simulation.Hotel.count_pepole_checkout_after_breakfast = 0
         simulation.Hotel.didnt_go_to_breakfast = 0
         simulation.Hotel.go_to_breakfast = 0
+        simulation.Hotel.count_of_booking_dont_go_to_pool_firstday=0#todo:delete
+        simulation.Hotel.count_of_booking_go_to_pool_firstday = 0#todo:delete
+        simulation.Hotel.count_people_checkin =0
 
 
 class CloseCustomerArrivalEvent(Event):  # close the hotel to guests at 5pm
@@ -118,6 +125,7 @@ class CheckInDepartureEvent(Event):
                 for customer in self.booking.customers:
                     customer.update_rank(rankDecrease)
             # תזמון ארוחות בוקר לכל יום שהייה
+            simulation.scheduleEvent(FirstDayPoolEvent(self.time,self.booking))
             start_day = int(self.booking.arrivalTime // 1440 + 1)
             end_day = int(self.booking.arrivalTime // 1440 + 1 + self.booking.stayDuration)
 
@@ -304,7 +312,7 @@ class calccheckout(Event): #todo:delete
 
 
 
-class FirstDayPool(Event): #todo:delete
+class FirstDayPoolEvent(Event): #todo:recall from chek in depurtue
     def __init__(self, time,booking):
         super().__init__(time)
         self.booking = booking
@@ -313,6 +321,21 @@ class FirstDayPool(Event): #todo:delete
     def handle(self, simulation):
         local_time=self.time%1440
         if local_time<19*60:
+            simulation.Hotel.count_of_booking_dont_go_to_pool_firstday += 1#todo:delete
             return
-            if simulation.check_pool_availability(booking):
+        if simulation.Hotel.getFacility("pool").checkActivityAvailability(self.booking):
+            simulation.Hotel.getFacility("pool").addCustomerToActivity(self.booking)
+            service_time=self.time+samplePoolSpent()
+            simulation.scheduleEvent(FirstDayPoolDepartureEvent(service_time, self.booking))
+        else:
+            simulation.Hotel.count_of_booking_dont_go_to_pool_firstday += 1#todo:delete
+            return
+class FirstDayPoolDepartureEvent(Event):
+    def __init__(self, time,booking):
+        super().__init__(time)
+        self.booking = booking
 
+    def handle(self, simulation):
+        print(f"the booking number who came to pool after check-in is {self.booking.bookingId}")#todo:delete
+        simulation.Hotel.count_of_booking_go_to_pool_firstday+=1#todo:delete
+        simulation.Hotel.getFacility("pool").endCustomerActivity(self.booking)#todo:delete
