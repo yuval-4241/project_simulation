@@ -152,7 +152,7 @@ def sampleBreakfastRate():
     """
     Generate a single Check-In sample using an exponential distribution.
     """
-    lambda_breakfast = 0.677  # The check in lambda value obtained earlier
+    lambda_breakfast = 15  # The check in lambda value obtained earlier
     return sampleExponential(lambda_breakfast)
 
 

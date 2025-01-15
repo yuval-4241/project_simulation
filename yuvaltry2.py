@@ -39,7 +39,7 @@ class Room:
         """
         return self.currentBooking
 
-    def performCheckOut(self):
+    def change_to_available_room(self):
 
         """
         מסמן את החדר כפנוי ומשחרר את ההזמנה הנוכחית.
@@ -66,7 +66,78 @@ class Table:
         """
         self.is_occupied = status
 
+class Customer:
+    countCustomers = 0
 
+    def __init__(self, groupType, groupId):
+        Customer.countCustomers += 1
+        self.customerId = Customer.countCustomers
+        self.groupId = groupId
+        self.expenses = 0
+        self.rank = 10
+        self.groupType = groupType
+        self.currentDay = 1
+        self.daily_activities, self.maxWaitingTime = self.initializeGroupAttributes()
+
+    def initializeGroupAttributes(self):
+        groupSettings = {
+            "family": ({"pool": [False, 0], "bar": [False, 0]}, 10),
+            "couple": ({"spa": [False, 0], "pool": [False, 0]}, 15),
+            "individual": ({"spa": [False, 0], "bar": [False, 0], "pool": [False, 0]}, 20)
+        }
+        return groupSettings.get(self.groupType, ({}, 0))
+
+    def update_rank(self, rank_decrease):
+        self.rank = max(self.rank - rank_decrease, 0)
+
+    def add_expense(self, expense):
+        self.expenses += expense
+
+    def get_expenses(self):
+        return self.expenses
+
+    def hasToDoActivity(self, activity_type):
+        activity = self.daily_activities.get(activity_type)
+        return activity and not activity[0] and activity[1] < 2
+
+    def maxWaitingTimeInQ(self):
+        return self.maxWaitingTime
+
+    def checkGroupType(self):
+        return self.groupType
+
+    def updateRankExitLongQ(self):
+        self.update_rank(0.03)
+
+    def updateBarExpenses(self):
+        drink_expenses = {
+            "family" : [3],
+            "couple": [3, 10, 15],
+            "individual": [3, 10, 15]
+        }
+
+        food_expenses = {
+            "family": [10, 12, 3, 15],
+            "couple": [10, 12, 3, 15],
+            "individual": [10, 12, 3, 15]
+        }
+
+        u1, u2 = np.random.uniform(), np.random.uniform()
+        if u1 < 0.5:  # Drinks
+            self.add_expense(self.choose_expense(drink_expenses[self.groupType], u2))
+        else:  # Food
+            self.add_expense(self.choose_expense(food_expenses[self.groupType], u2))
+
+    def choose_expense(self, expense_options, probability):
+        num_options = len(expense_options)
+        for i in range(num_options):
+            if probability < (i + 1) / num_options:
+                return expense_options[i]
+        return expense_options[-1]
+
+    def __str__(self):
+        return (f"Customer ID: {self.customerID}, Group ID: {self.groupId}, Group Type: {self.groupType}, "
+                f"Rank: {self.rank}, Expenses: {self.expenses}")
 
 
 class Booking:
@@ -79,13 +150,14 @@ class Booking:
         Booking.totalBookings += 1
         self.bookingId = Booking.totalBookings
         self.customers = []  # Changed to lowercase for consistency
-        self.numGuests = sampleCustomerCount()
+        self.numCustomers = sampleCustomerCount()
         self.stayDuration = sampleStayDuration()
         self.arrivalTime = arrivalTime
-        self.breakfastArrivalTimes = []  # To store breakfast times for each day
-        self.groupType = self.determineGroupType()
-        self.breakfastArrivalTime = None
+        self.groupType = self.checkGroupType()
+        self.breakfastArrivalTime = 0
         self.hasCheckedOut = False
+        for i in range(self.numCustomers):
+            self.customers.append(Customer(self.groupType, self.bookingId))
 
         # Create customers based on the group category
 
@@ -114,21 +186,19 @@ class Booking:
         """
         Return the size of the group.
         """
-        return self.numGuests
+        return self.numCustomers
 
     def getDurationtime(self):
         return self.stayDuration
-    def determineGroupType(self):
+    def checkGroupType(self):
         """
         Categorize the group based on its size.
         """
-        if self.numGuests == 3:
-            return "triple"
-        elif self.numGuests >= 4:
+        if self.numCustomers >= 3:
             return "family"
-        elif self.numGuests == 2:
+        elif self.numCustomers == 2:
             return "couple"
-        return "one"
+        return "individual"
 
 
     def isLastDay(self, currentTime):
@@ -147,9 +217,65 @@ class Booking:
         # בדוק אם היום הנוכחי הוא היום האחרון לשהייה
         return current_day == last_day
 
+    def initialize_activities_dictionary(self):
+        for customer in self.customers:
+            activity_templates = {
+                "family": {"pool": [False, 0], "bar": [False, 0]},
+                "couple": {"spa": [False, 0], "pool": [False, 0]},
+                "individual": {"spa": [False, 0], "bar": [False, 0], "pool": [False, 0]}
+            }
+
+    def update_day(self):
+        self.currentDay += 1
+        for customer in self.customers:
+            customer.currentDay += 1
+
+    def booking_Rank(self):
+        rank_sum = 0
+        rank_sum = sum(customer.rank for customer in self.customers)
+        return rank_sum / self.num_customers
+
+    def getGroupLength(self):  # Returns the number of customers
+        return self.numCustomers
+
+    def maxWaitingTimeInQ(self):
+        if self.groupType == "family":
+            return 10
+        elif self.groupType == "couple":
+            return 15
+        elif self.groupType == "individual":
+            return 20
+
+    def updateRankCheckIn(self, starting_check_in_time):
+        waitingInQueue = starting_check_in_time - self.arriveTime
+        for customer in self.customers:
+            customer.update_rank((waitingInQueue // 20) * 0.02)
+
+    def updateRankBreakfast(self, starting_breakfast_time):
+        waitingInQueue = starting_breakfast_time - self.breakfastArrivalTimes
+        for customer in self.customers:
+            customer.update_rank((waitingInQueue // 20) * 0.02)
+
+    def updateRankExtendedQueue(self):
+        for customer in self.customers:
+            customer.update_rank(0.03)
+
+    def booking_cost(self, room_type):
+        total_expenses = 0
+        if room_type == "Suite":
+            total_expenses += self.stayDuration * 370
+        else:
+            total_expenses += self.stayDuration * 250
+
+        for customer in self.customers:
+            total_expenses += customer.get_expenses()
+
+        print(f"Total group expenses: {total_expenses}")
+        return total_expenses
 
 
-class hotelSimulation:
+
+class Hotel:
     def __init__(self):
         self.public_open = False#used but maybe delete
         self.servers_busy = 0#dosnt used maybe delete
@@ -159,7 +285,7 @@ class hotelSimulation:
         self.total_guest_groups=0 #todo:delete
         self.num_servers = 2  # מספר השרתים
         self.server_states = [False] * self.num_servers
-        self.count_pepole_checkin = 0  #todo:delete
+        self.count_people_checkin = 0  #todo:delete
 
         self.family_rooms = [Room("family") for _ in range(30)]  # 30 חדרי משפחה
         self.triple_rooms = [Room("triple") for _ in range(40)]  # 40 חדרי טריפל
@@ -181,12 +307,13 @@ class hotelSimulation:
 
         self.rate_for_breakfast=0#used
         self.daily_rank = 7#used
-        self.hotelLambada = 1078
+        self.hotelLambada = 9.8
         self.total_wait_forthisday=[]#used
          # Initial rank of the hotel
 
         self.rank_feedback = []#used
 
+        self.facilities = self.initializeFacilities()
 
 ############rooms check in and check out#####################################################
     def check_and_assign_room(self, booking):
@@ -246,7 +373,7 @@ class hotelSimulation:
 
                     # אם זה היום האחרון של ההזמנה, בצע צ'ק-אאוט וסמן את החדר כפנוי
                     if booking and booking.isLastDay(current_date ):
-                        room.performCheckOut()
+                        room.change_to_available_room()
                         available_rooms[room_type] += 1
                     # אם החדר כבר פנוי
                     elif room.isAvailable():
@@ -268,7 +395,7 @@ class hotelSimulation:
         for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
             for room in room_list:
                 if room.currentBooking == booking:
-                    room.performCheckOut()  # מסמן את החדר כפנוי
+                    room.change_to_available_room()  # מסמן את החדר כפנוי
                     print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
                     return
         print(f"No room found for Booking {booking.bookingId}.")
@@ -324,6 +451,7 @@ class hotelSimulation:
         """
         if self.rank_feedback:  # אם יש דירוגים
             self.daily_rank = sum(self.rank_feedback) / len(self.rank_feedback)-self.rate_for_breakfast
+            print(f"Updated review with - satisfaction from breakfast rank: {self.daily_rank}")
             total_waiting_time = sum(self.total_wait_forthisday)
 
             # חישוב עונש על זמני ההמתנה
@@ -341,8 +469,8 @@ class hotelSimulation:
         else:
             self.daily_rank = 7  # אם אין דירוגים, שומרים על הדירוג ההתחלתי
 
-
-
+    def get_daily_rank(self):#todo:delete
+        return self.daily_rank
 
 
 
@@ -353,16 +481,26 @@ class hotelSimulation:
         beta_2 = 2
         R_available = available_rooms
         H = self.daily_rank
+        R_indicator=self.is_room_available_indicator()
 
         if R_available == 0:
             self.hotelLambada = 0  # אין חדרים פנויים => אין הגעת לקוחות
         else:
-            self.hotelLambada = alpha * ((R_available / R_total) ** beta_1) * ((H / 10) ** beta_2)
+            self.hotelLambada = alpha * ((R_available / R_total) ** beta_1) * ((H / 10) ** beta_2)*R_indicator
 
         return self.hotelLambada
 
     def get_hotal_lambda(self):
         return self.hotelLambada
+
+    def is_room_available_indicator(self):
+        """
+        מחזיר 1 אם לפחות חדר אחד פנוי, אחרת 0.
+        """
+        return 1 if self.count_free_rooms() > 0 else 0
+
+##################################facalities#####################################
+
 
 
 
@@ -375,7 +513,7 @@ class Simulation:
         :param simulationTime: Total time for the simulation (in minutes).
         """
         self.simulationTime = simulationTime  # משך זמן הסימולציה
-        self.hotelSimulation = hotelSimulation()  # אובייקט המלון לניהול כל התהליכים
+        self.Hotel = Hotel()  # אובייקט המלון לניהול כל התהליכים
         self.clock = 0  # שעון הסימולציה
         self.event_list = []  # רשימת אירועים (תור עדיפויות)
         self.total_waiting_time = 0  # מצטבר של זמני ההמתנה של כל הלקוחות
@@ -392,7 +530,7 @@ class Simulation:
         """
         self.scheduleEvent(OpenHotelEvent(480))
         # פתיחת המלון ב-8 בבוקר
-        self.scheduleEvent(closeHotelDayEvent(60*24))
+        self.scheduleEvent(closeHotelDayEvent(0))
         self.scheduleEvent(calcbrefasteachday(17 * 60))
         self.scheduleEvent(calccheckout(14 * 60))
 
@@ -409,8 +547,8 @@ class Simulation:
         """
         Display the final results of the simulation.
         """
-        print("Total guest groups:", self.hotelSimulation.total_guest_groups)  # סך כל הקבוצות שהתארחו במלון
-        print(f"Lobby queue size: {len(self.hotelSimulation.lobby_queue)}")
+        print("Total guest groups:", self.Hotel.total_guest_groups)  # סך כל הקבוצות שהתארחו במלון
+        print(f"Lobby queue size: {len(self.Hotel.lobby_queue)}")
 
 
 
