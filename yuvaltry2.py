@@ -131,76 +131,64 @@ class Booking:
         return "one"
 
 
-    def isFirstDay(self, currentTime):
-        """
-        Check if it's the first day of the group's stay.
-        """
-        return currentTime // (24 * 60) == self.arrivalTime // (24 * 60)
-
     def isLastDay(self, currentTime):
         """
-        Check if it's the last day of the group's stay.
-        """
-        return currentTime // (24 * 60) == (self.arrivalTime // (24 * 60) + self.stayDuration)
+            Check if it's the last day of the group's stay.
+            """
+        # חשב את היום של זמן ההגעה
+        arrival_day = self.arrivalTime // 1440 +1
+
+        # חשב את היום האחרון לשהייה
+        last_day = arrival_day + self.stayDuration
+
+        # חשב את היום הנוכחי
+        current_day = currentTime
+
+        # בדוק אם היום הנוכחי הוא היום האחרון לשהייה
+        return current_day == last_day
+
+
 
 class hotelSimulation:
     def __init__(self):
-        self.public_open = False
-        self.check_in_open = False
-        self.check_out_open = False
-        self.num_servers = 2
-        self.servers_busy = 0
-        self.check_in_queue = []
-        self.check_out_queue = []
-        self.lobby_queue = []
-        self.total_guest_groups=0
-        self.assignRoomscount=0
-        self.count_chekin_queue=0
+        self.public_open = False#used but maybe delete
+        self.servers_busy = 0#dosnt used maybe delete
+        self.check_in_queue = []#used
+        self.check_out_queue = []#used
+        self.lobby_queue = []#used
+        self.total_guest_groups=0 #todo:delete
         self.num_servers = 2  # מספר השרתים
         self.server_states = [False] * self.num_servers
-        self.nothaveroom=0
-        self.count_pepole_checkin = 0  #
+        self.count_pepole_checkin = 0  #todo:delete
 
         self.family_rooms = [Room("family") for _ in range(30)]  # 30 חדרי משפחה
         self.triple_rooms = [Room("triple") for _ in range(40)]  # 40 חדרי טריפל
         self.couple_rooms = [Room("couple") for _ in range(30)]  # 30 חדרי זוג
         self.suite_rooms = [Room("suite") for _ in range(10)]  # 10 סוויטות
         self.free_rooms_count = 110
-        self.do_today_checkout=0
+        self.do_today_checkout=0#todo:delete
+        self.nothaveroom=0
 
         self.tables = [Table() for _ in range(12)]
         self.breakfast_queue = []  # Guests waiting for breakfast
-        self.count_pepole_brekfast_checkout=0#todo:delelte
+        self.count_pepole_checkout_after_breakfast=0#todo:delete
         self.count_pepole_brekfast_done=0 #todo:delete
         self.didnt_go_to_breakfast=0#todo:delete
         self.go_to_breakfast = 0  # todo:delete
-        self.rate_for_breakfast=0
-        self.daily_rank = 7
-        self.hotelLambada = self.calculate_lambda(110)
-        self.total_wait_forthisday=[]
+        self.groups_from_last_Day=0 # todo:delete
+        self.group_checked_out=0
+        self.count_pepole_NObrekfast_checkout =0
+
+        self.rate_for_breakfast=0#used
+        self.daily_rank = 7#used
+        self.hotelLambada = 1078
+        self.total_wait_forthisday=[]#used
          # Initial rank of the hotel
 
-        self.rank_feedback = []
-
-    def calculate_lambda(self,available_rooms):
-        alpha = 20
-        R_total = 110
-        beta_1 = 1.5
-        beta_2 = 2
-        R_available = available_rooms
-        H = self.daily_rank
-
-        if R_available == 0:
-            self.hotelLambada = 0  # אין חדרים פנויים => אין הגעת לקוחות
-        else:
-            self.hotelLambada = alpha * ((R_available / R_total) ** beta_1) * ((H / 10) ** beta_2)
-
-        return self.hotelLambada
-
-    def get_hotal_lambda(self):
-            return self.hotelLambada
+        self.rank_feedback = []#used
 
 
+############rooms check in and check out#####################################################
     def check_and_assign_room(self, booking):
             """
             בודקת אם יש חדר פנוי עבור ההזמנה, ואם יש, מקצה אותו.
@@ -230,8 +218,6 @@ class hotelSimulation:
                     return room.roomId  # מחזיר את מזהה החדר שהוקצה
 
             #אם לא נמצא חדר פנוי
-            print(f"Total free rooms: {self.count_free_rooms()}")
-            print(f"No room available for booking  {booking.bookingId}.")
             return None
 
 
@@ -259,7 +245,7 @@ class hotelSimulation:
                     booking = room.getCurrentBooking()
 
                     # אם זה היום האחרון של ההזמנה, בצע צ'ק-אאוט וסמן את החדר כפנוי
-                    if booking and booking.isLastDay(current_date * 24 * 60):
+                    if booking and booking.isLastDay(current_date ):
                         room.performCheckOut()
                         available_rooms[room_type] += 1
                     # אם החדר כבר פנוי
@@ -273,70 +259,6 @@ class hotelSimulation:
             1 for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms] for room in
             room_list if room.isAvailable())
 
-    def is_server_available(self):
-        """בודק אם יש שרת פנוי"""
-        return any(not busy for busy in self.servers_busy)
-
-    def find_available_server(self):
-        for i, busy in enumerate(self.server_states):
-            if not busy:
-                return i
-        return None
-
-    def assign_to_server(self, time, server_id,booking ):
-        self.server_states[server_id] = True
-
-    def get_arrival_rate(self):
-        return self.arrival_rate
-
-    def set_public_status(self, status):
-        self.public_open = status
-
-    def set_check_out_status(self, status):
-        self.check_out_open = status
-
-    def setCheckInOpen(self, status):
-        """
-        Set the status of the check-in process (open/close).
-        :param status: True to open, False to close.
-        """
-        self.check_in_open = status
-
-
-    def assignRoom(self, booking):
-        """
-        Assign a room to the given booking based on the group size.
-        :param booking: Booking object containing group details.
-        :return: True if a room was successfully assigned, False otherwise.
-        """
-        booking_size = booking.getGroupSize()
-
-        # הגדרת סדר החיפוש לפי גודל הקבוצה
-        if booking_size >= 4:
-            room_list = self.family_rooms  # חדרי משפחות ל-4 ומעלה
-        elif booking_size == 3:
-            room_list = self.triple_rooms  # חדרי טריפל ל-3 אורחים
-        elif booking_size == 2:
-            # בדיקה אם ההזמנה מתאימה לסוויטה
-            if sampleIsSuite(2):
-                room_list = self.suite_rooms
-            else:
-                room_list = self.couple_rooms
-        else:
-            # בדיקה אם ההזמנה מתאימה לסוויטה ליחיד
-            if sampleIsSuite(1):
-                room_list = self.suite_rooms
-            else:
-                room_list = self.couple_rooms
-
-        # חיפוש החדר הפנוי הראשון והקצאתו
-        for room in room_list:
-            if room.isAvailable():
-                room.bookRoom(booking)
-                self.assignRoomscount += 1
-                return True
-            self.nothaveroom += 1  # אם לא נמצא חדר מתאים
-            return False
 
     def release_room(self, booking):
         """
@@ -351,9 +273,40 @@ class hotelSimulation:
                     return
         print(f"No room found for Booking {booking.bookingId}.")
 
+
+###########################check in check out servers
+    def is_server_available(self):
+        """בודק אם יש שרת פנוי"""
+        return any(not busy for busy in self.servers_busy)
+
+    def find_available_server(self):
+        for i, busy in enumerate(self.server_states):
+            if not busy:
+                return i
+        return None
+
+    def assign_to_server(self, server_id ):
+        self.server_states[server_id] = True
+
+
+
+    def set_public_status(self, status):
+        self.public_open = status
+
+
+
+    def setCheckInOpen(self, status):
+        """
+        Set the status of the check-in process (open/close).
+        :param status: True to open, False to close.
+        """
+        self.check_in_open = status
+
+
+
     def setPublicAccess(self,status):
         self.public_open = status
-########breakfast#######
+####################################breakfast  ####################################################
     def find_available_table(self):
         """
         מחזיר את האינדקס של השולחן הפנוי הראשון או None אם אין שולחן פנוי.
@@ -363,7 +316,7 @@ class hotelSimulation:
                 return index
         return None
 
-
+####################update everyday hotel rank##########################################################
 
     def update_daily_rank(self):
         """
@@ -371,27 +324,45 @@ class hotelSimulation:
         """
         if self.rank_feedback:  # אם יש דירוגים
             self.daily_rank = sum(self.rank_feedback) / len(self.rank_feedback)-self.rate_for_breakfast
+            total_waiting_time = sum(self.total_wait_forthisday)
+
+            # חישוב עונש על זמני ההמתנה
+            penalty = (total_waiting_time // 20) * 0.02  # כל 20 דקות מורידות 0.2 מהדירוג
+            self.daily_rank = max(0, self.daily_rank - penalty)  # דירוג לא יורד מתחת ל
+            # הדפסה
+            print(f"Total waiting time for this day: {total_waiting_time} minutes")
+            print(f"Updated daily rank: {self.daily_rank}")
+
+            # איפוס המערך ליום הבא
+            self.total_wait_forthisday = []
+            self.rank_feedback = []  # איפוס רשימת הדירוגים
+            self.rate_for_breakfast = 0
+
         else:
             self.daily_rank = 7  # אם אין דירוגים, שומרים על הדירוג ההתחלתי
-        self.rank_feedback = []  # איפוס רשימת הדירוגים
-        self.rate_for_breakfast = 0
 
 
 
 
-    def update_wait_total_for_Rank(self):
-        total_waiting_time = sum(self.total_wait_forthisday)
 
-        # חישוב עונש על זמני ההמתנה
-        penalty = (total_waiting_time // 20) * 0.02  # כל 20 דקות מורידות 0.2 מהדירוג
-        self.daily_rank = max(0, self.daily_rank - penalty)  # דירוג לא יורד מתחת ל-0
 
-        # הדפסה
-        print(f"Total waiting time for this day: {total_waiting_time} minutes")
-        print(f"Updated daily rank: {self.daily_rank}")
+    def calculate_lambda(self,available_rooms):
+        alpha = 20
+        R_total = 110
+        beta_1 = 1.5
+        beta_2 = 2
+        R_available = available_rooms
+        H = self.daily_rank
 
-        # איפוס המערך ליום הבא
-        self.total_wait_forthisday = []
+        if R_available == 0:
+            self.hotelLambada = 0  # אין חדרים פנויים => אין הגעת לקוחות
+        else:
+            self.hotelLambada = alpha * ((R_available / R_total) ** beta_1) * ((H / 10) ** beta_2)
+
+        return self.hotelLambada
+
+    def get_hotal_lambda(self):
+        return self.hotelLambada
 
 
 
@@ -422,6 +393,8 @@ class Simulation:
         self.scheduleEvent(OpenHotelEvent(480))
         # פתיחת המלון ב-8 בבוקר
         self.scheduleEvent(closeHotelDayEvent(60*24))
+        self.scheduleEvent(calcbrefasteachday(17 * 60))
+        self.scheduleEvent(calccheckout(14 * 60))
 
         # עיבוד האירועים עד שהסימולציה מסתיימת
         while self.event_list and self.clock < self.simulationTime:
@@ -438,14 +411,11 @@ class Simulation:
         """
         print("Total guest groups:", self.hotelSimulation.total_guest_groups)  # סך כל הקבוצות שהתארחו במלון
         print(f"Lobby queue size: {len(self.hotelSimulation.lobby_queue)}")
-        print(f"pepole from brekfast to checkout: ", self.hotelSimulation.count_pepole_brekfast_checkout)
-        print(f"brekfast done :",self.hotelSimulation.count_pepole_brekfast_done)
-        print(f"no room  :", self.hotelSimulation.nothaveroom)
-        print(f"chrckindone  :", self.hotelSimulation.count_pepole_checkin)
+
 
 
 # הפעלת הסימולציה מחוץ למחלקה
 if __name__ == "__main__":
     # יצירת מופע של הסימולציה למשך 10 ימים
-    check = Simulation(60 * 24 * 10)  # 10 ימים
+    check = Simulation(60 * 24 * 8)  # 10 ימים
     check.run()

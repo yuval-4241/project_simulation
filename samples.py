@@ -148,6 +148,14 @@ def sampleBreakfastTime():
     """
     return boxMuller(40, 100)
 
+def sampleBreakfastRate():
+    """
+    Generate a single Check-In sample using an exponential distribution.
+    """
+    lambda_breakfast = 0.677  # The check in lambda value obtained earlier
+    return sampleExponential(lambda_breakfast)
+
+
 
 def sampleCustomerArrival(hotel, H=7, R_available=120):
     """

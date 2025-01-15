@@ -1,3 +1,5 @@
+import heapq
+
 from samples import *
 from yuvaltry2 import*
 
@@ -22,34 +24,35 @@ class OpenHotelEvent(Event):
         arrival_end_time = (self.time // 1440) * 1440 + 17 * 60  # סיום היום בשעה 17:00
         if next_arrival_time < arrival_end_time:
             simulation.scheduleEvent(CheckInArrivalEvent(next_arrival_time))
+        # תזמון הצ'ק-אין הראשון ב-15:00
+        check_in_start_time = self.time+7 * 60  # 15:00 ביום הראשון
+        simulation.scheduleEvent(CheckInDepartureEvent(check_in_start_time, None))
 
 
 class closeHotelDayEvent(Event):
         # open the hotel to guests at 00:00
     def handle(self, simulation):
         current_date = self.time // (24 * 60)  # מחלקים את הזמן הכולל למקטעי ימים
-        print(f"The day is: {current_date} ")
-        print(f"The day is dont go to breakfast: {current_date} ,{simulation.hotelSimulation.didnt_go_to_breakfast}")  # todo:delet
-        print(f"The day is  go to breakfast: {current_date}, {simulation.hotelSimulation.go_to_breakfast}")
-        print(f"The day is  do checkout: {current_date} ,{simulation.hotelSimulation.do_today_checkout}")
-        total_occupied_rooms = 110 - simulation.hotelSimulation.count_free_rooms()
-        print(f"total rooms that occupaid ,{current_date} {total_occupied_rooms}")  # todo:delete
-        simulation.hotelSimulation.didnt_go_to_breakfast = 0
-        simulation.hotelSimulation.go_to_breakfast = 0
-        simulation.hotelSimulation.do_today_checkout=0
+
 
         available_rooms=simulation.hotelSimulation.count_free_rooms()
-        available_rooms_nextday = simulation.hotelSimulation.calculateAvailableRoomsByTypeAtMidnight(current_date)
+        print(f"The total rooms for the end of the day  : {current_date } is: {110-available_rooms}")
+        available_rooms_nextday = simulation.hotelSimulation.calculateAvailableRoomsByTypeAtMidnight(current_date+1)
         simulation.hotelSimulation.update_daily_rank()
-        simulation.hotelSimulation.update_wait_total_for_Rank()
         current_lamda= simulation.hotelSimulation.calculate_lambda(available_rooms)
+        print(f"The lamda for tomorow is   : {current_date+1} and lamda is: {current_lamda}")
         simulation.scheduleEvent(closeHotelDayEvent(self.time + 24 * 60))
-
+        simulation.hotelSimulation.group_checked_out = 0
+        simulation.hotelSimulation.count_pepole_NObrekfast_checkout = 0
+        simulation.hotelSimulation.count_pepole_checkout_after_breakfast = 0
+        simulation.hotelSimulation.didnt_go_to_breakfast = 0
+        simulation.hotelSimulation.go_to_breakfast = 0
 
 
 class CloseCustomerArrivalEvent(Event):  # close the hotel to guests at 5pm
     def handle(self, simulation):
         simulation.hotelSimulation.setPublicAccess(False)
+        current_date = self.time // (24 * 60) +1 # מחלקים את הזמן הכולל למקטעי ימים
         simulation.scheduleEvent(OpenHotelEvent(self.time + 15 * 60))  # schedule reopening at 8am
 
 
@@ -58,12 +61,18 @@ class CloseCustomerArrivalEvent(Event):  # close the hotel to guests at 5pm
 class CheckInArrivalEvent(Event):
     def handle(self, simulation):
         # יצירת הזמנה חדשה והוספתה לתור הלובי
-        next_arrival_time = self.time + sampleCustomerArrival(simulation.hotelSimulation.get_hotal_lambda())  # חישוב זמן ההגעה הבא
-        arrival_end_time = 17 * 60  # סיום ההגעה ב-17:00
-        if next_arrival_time < simulation.simulationTime and self.time < arrival_end_time:
+        next_arrival_time = self.time + sampleCustomerArrival(simulation.hotelSimulation.get_hotal_lambda())
+        local_time = next_arrival_time % 1440  # השעה הנוכחית במונחי דקות ביום
+
+        # בדיקה אם השעה היא בין 08:00 ל-17:00
+        check_in_start_time = 8 * 60  # 08:00 במונחי דקות
+        check_in_end_time = 17 * 60  # 17:00 במונחי דקות
+
+        if  (check_in_start_time <= local_time < check_in_end_time):
+        # חישוב זמן ההגעה הבא
             simulation.scheduleEvent(CheckInArrivalEvent(next_arrival_time))
 
-        booking = Booking(arrivalTime=self.time)
+        booking = Booking(next_arrival_time)
         if simulation.hotelSimulation.check_and_assign_room(booking):
             simulation.hotelSimulation.total_guest_groups+=1
             heapq.heappush(simulation.hotelSimulation.lobby_queue, booking)
@@ -71,18 +80,6 @@ class CheckInArrivalEvent(Event):
 
         # תזמון ההגעה הבאה אם יש זמן נוסף בסימולציה
 
-            day_start_time = (self.time // 1440) * 1440  # תחילת היום במונחי דקות
-
-            # טווח השעות 15:00–20:00
-            check_in_window_start = day_start_time + 900  # 15:00
-            check_in_window_end = day_start_time + 1200  # 20:00
-
-            # דגימת זמן השירות מההתפלגות
-            service_time = sampleCheckIn()  # פונקציה שמחזירה זמן מבוסס על התפלגות דגימה
-            check_in_start_time = check_in_window_start + service_time
-
-
-            simulation.scheduleEvent(CheckInDepartureEvent(check_in_start_time, booking,))
         else:
             simulation.hotelSimulation.nothaveroom+=1
 
@@ -91,26 +88,45 @@ class CheckInDepartureEvent(Event):
         super().__init__(time)
         self.booking = booking
 
-
     def handle(self, simulation):
-        if simulation.hotelSimulation.lobby_queue:
-            simulation.hotelSimulation.count_pepole_checkin+=1
-            new_booking= heapq.heappop(simulation.hotelSimulation.lobby_queue)
-            wait_time=self.time-new_booking.arrivalTime
-            simulation.hotelSimulation.total_wait_forthisday.append(wait_time)
-            start_day = int(self.booking.arrivalTime // 1440) + 1  # מתחילים מיום שלאחר יום ההגעה
-            end_day = int(self.booking.arrivalTime // 1440 + self.booking.stayDuration)  # היום האחרון של השהייה
+        # בדיקה אם התור ריק
+        if not simulation.hotelSimulation.lobby_queue:
+            print(f"No guests in the lobby queue at time {self.time}.")
+            return
 
-            for day in range(start_day, end_day):
-                # חישוב זמן ארוחת הבוקר עבור כל יום
-                breakfast_time = day * 1440 + (6.5 * 60) + sampleBreakfastTime()
+        # שליפת האורח הראשון בתור
+        next_booking = heapq.heappop(simulation.hotelSimulation.lobby_queue)
+        service_time = sampleCheckIn()
+        # חישוב הזמן הנוכחי ביום
+        time_in_day = self.time % 1440+service_time
+        # השעה הנוכחית במונחי דקות ביום
 
-                # תזמון האירוע
-                simulation.scheduleEvent(BreakfastArrivalEvent(breakfast_time, self.booking))
+        # בדיקה אם השעה הנוכחית גדולה מ-20:00
+        if time_in_day > 20 * 60:  # 20:00 במונחי דקות
+            print(f"Time {self.time} exceeds 20:00. Guest {next_booking.bookingId} is skipped.")
+            return
 
-            # תזמון צ'ק-אאוט ביום האחרון בשעה 11:00
-            checkout_time = (int(self.booking.arrivalTime // 1440) + self.booking.stayDuration - 1) * 1440 + 11 * 60
-            simulation.scheduleEvent(CheckOutReminderEvent(checkout_time, self.booking))
+        # חישוב זמן השירות ותזמון האורח הבא
+
+        simulation.scheduleEvent(CheckInDepartureEvent(time_in_day, next_booking))
+
+        # עדכון מידע על האורח
+        simulation.hotelSimulation.count_pepole_checkin += 1
+        wait_time = self.time - next_booking.arrivalTime
+        simulation.hotelSimulation.total_wait_forthisday.append(wait_time)
+
+        # תזמון ארוחות בוקר לכל יום שהייה
+        start_day = int(next_booking.arrivalTime // 1440+1)
+        end_day = int(next_booking.arrivalTime // 1440 +1+ next_booking.stayDuration)
+
+        for day in range(start_day, end_day+1):
+            breakfast_time = day * 1440 + (6.5 * 60) + sampleBreakfastRate()
+            simulation.scheduleEvent(BreakfastArrivalEvent(breakfast_time, next_booking))
+
+        # תזמון צ'ק-אאוט ביום האחרון בשעה 11:00
+        checkout_time = (start_day+1 + next_booking.stayDuration) * 1440 + 11 * 60
+        simulation.scheduleEvent(CheckOutReminderEvent(checkout_time, next_booking))
+
 
 class CheckoutArrivleEvent(Event):
     def __init__(self, time, booking):
@@ -120,10 +136,14 @@ class CheckoutArrivleEvent(Event):
     def handle(self, simulation):
         """
         Handle the checkout event for the group.
+
         """
+        feedback = random.randint(1, 10)
+        simulation.hotelSimulation.rank_feedback.append(feedback)
         server = simulation.hotelSimulation.find_available_server()
         if server is not None:
-            simulation.hotelSimulation.assign_to_server(self.time, server, self.booking)
+
+            simulation.hotelSimulation.assign_to_server( server)
             service_time = self.time + sampleCheckOut()
             simulation.scheduleEvent(CheckOutDepartureEvent(service_time, server, self.booking))
         else:
@@ -141,13 +161,8 @@ class CheckOutDepartureEvent(Event):  # Add inheritance from Event
         """
         Handle the departure event after checkout.
         """
-        # Provide feedback and release the room
-        feedback = random.randint(1, 10)
-        simulation.hotelSimulation.rank_feedback.append(feedback)
-        simulation.hotelSimulation.release_room(self.booking)
-        simulation.hotelSimulation.do_today_checkout += 1
-        print(f"Room released for booking {self.booking.bookingId}")
 
+        simulation.hotelSimulation.group_checked_out += 1
         # Mark the server as free or assign to the next booking in queue
         if simulation.hotelSimulation.check_out_queue:
             next_booking_time, next_booking = simulation.hotelSimulation.check_out_queue.pop(0)
@@ -161,66 +176,58 @@ class CheckOutDepartureEvent(Event):  # Add inheritance from Event
 class BreakfastArrivalEvent(Event):
     def __init__(self, time, booking):
         super().__init__(time)
-        self.booking=booking
+        self.booking = booking
 
     def handle(self, simulation):
-
-        breakfast_start_time = 6.5 * 60  # שעה 6:30 במונחי דקות
-        breakfast_end_time = 11 * 60    # שעה 11:00 במונחי דקות
+        breakfast_start_time = 6.5 * 60  # 6:30 במונחי דקות
+        breakfast_end_time = 11 * 60    # 11:00 במונחי דקות
         local_time = self.time % 1440
-        # בדיקה אם הזמן הוא במסגרת שעות פעילות חדר האוכל
-        if not (breakfast_start_time <= local_time< breakfast_end_time):
-            simulation.hotelSimulation.didnt_go_to_breakfast+=1
-            return  # אם חדר האוכל סגור, האירוע לא מבוצע
 
+        # בדיקה אם הזמן הוא במסגרת שעות פעילות חדר האוכל
+        if not (breakfast_start_time <= local_time < breakfast_end_time):
+            simulation.hotelSimulation.didnt_go_to_breakfast += 1
+            return
 
         available_table_index = simulation.hotelSimulation.find_available_table()
         if available_table_index is not None:
-            # סימון השולחן כתפוס
+
+            breakfast_duration = self.time + sampleBreakfastTime()
+
             simulation.hotelSimulation.tables[available_table_index].set_status(True)
             print(f"Table seat {self.booking.bookingId} at table {available_table_index}")
-            breakfast_duration =self.time+ sampleBreakfastTime()
-            simulation.scheduleEvent(BreakfastDepartureEvent( breakfast_duration,self.booking, available_table_index))
-            if self.booking.isLastDay(self.time):
-                simulation.hotelSimulation.count_pepole_brekfast_checkout += 1
-                simulation.scheduleEvent(CheckoutArrivleEvent(breakfast_duration, self.booking))
+            simulation.scheduleEvent(BreakfastDepartureEvent(breakfast_duration, self.booking, available_table_index))
+
         else:
             self.booking.breakfastArrivalTime = self.time
             simulation.hotelSimulation.breakfast_queue.append(self.booking)
 
 class BreakfastDepartureEvent(Event):
-    def __init__(self, time, booking, table_index):
+    def __init__(self, time, booking, table_id):
         super().__init__(time)
         self.booking = booking
-        self.table_index = table_index
+        self.table_id = table_id
 
     def handle(self, simulation):
-        # בדיקה אם יש לקוחות בתור
-        simulation.hotelSimulation.go_to_breakfast+=1
-        if simulation.hotelSimulation.breakfast_queue:
-            # הושבת הלקוח הראשון בתור
-            next_booking = simulation.hotelSimulation.breakfast_queue.pop(0)
-            print(f"Booking {next_booking.bookingId} seated at table {self.table_index} from queue.")
+                # שחרור השולחן
 
-            # סימון זמן ההמתנה
-            waiting_time = self.time - next_booking.breakfastArrivalTime
-            simulation.hotelSimulation.total_wait_forthisday.append(waiting_time)
-
-            # תזמון עזיבה חדשה ללקוח מהתור
-            breakfast_duration = sampleBreakfastTime()
-            simulation.scheduleEvent(BreakfastDepartureEvent(self.time + breakfast_duration, next_booking, self.table_index))
+        simulation.hotelSimulation.go_to_breakfast += 1
+        simulation.hotelSimulation.tables[self.table_id].set_status(False)
+        print(f"Table {self.table_id} is now available.")
 
 
-        if self.booking.isLastDay(self.time) and not self.booking.hasCheckedOut:
-            simulation.scheduleEvent(CheckoutArrivleEvent(self.time, self.booking))
+        # בדיקה אם זה היום האחרון של האורח ותזמון צ'ק-אאוט
+        if self.booking.isLastDay(self.time // 1440 + 1) and not self.booking.hasCheckedOut:
+            simulation.hotelSimulation.count_pepole_checkout_after_breakfast += 1
             self.booking.hasCheckedOut = True
-        else:
-            # סימון השולחן כפנוי
-            simulation.hotelSimulation.tables[self.table_index].set_status(False)
-            print(f"Table {self.table_index} is now available.")
+            simulation.scheduleEvent(CheckoutArrivleEvent(self.time, self.booking))
 
-        # ספירת אנשים שסיימו ארוחת בוקר
-        simulation.hotelSimulation.count_pepole_brekfast_done += 1
+        # אם יש אנשים בתור, הושב אותם לשולחן שהתפנה
+        if simulation.hotelSimulation.breakfast_queue:
+            next_booking = simulation.hotelSimulation.breakfast_queue.pop(0)
+            print(f"Booking {next_booking.bookingId} seated at table {self.table_id} from queue.")
+            breakfast_duration = self.time + sampleBreakfastTime()
+            simulation.scheduleEvent(BreakfastDepartureEvent(breakfast_duration, next_booking, self.table_id))
+
         if random.random() < 0.1:  # 10% סיכוי
             print(f"Booking {self.booking.bookingId} did not enjoy the breakfast.")
             simulation.hotelSimulation.rate_for_breakfast=simulation.hotelSimulation.rate_for_breakfast+0.025  # השפעה שלילית על הדירוג
@@ -231,12 +238,44 @@ class BreakfastDepartureEvent(Event):
 
 class CheckOutReminderEvent(Event):
     def __init__(self, time, booking):
-        super().__init__(time)
-        self.booking = booking
+       super().__init__(time)
+       self.booking = booking
 
     def handle(self, simulation):
         # בדיקה אם האורח כבר ביצע צ'ק-אאוט
-        if not self.booking.hasCheckedOut:
+       if not self.booking.hasCheckedOut:
+            simulation.hotelSimulation.count_pepole_NObrekfast_checkout += 1
             print(f"Booking {self.booking.bookingId} missed breakfast, going to checkout.")
-            simulation.scheduleEvent(CheckoutArrivleEvent(self.time, self.booking))
             self.booking.hasCheckedOut = True
+            simulation.scheduleEvent(CheckoutArrivleEvent(self.time, self.booking))
+
+
+
+class calcbrefasteachday(Event): #todo:delete
+    def __init__(self, time):
+        super().__init__(time)
+
+
+    def handle(self, simulation):
+        current_date = self.time // (24 * 60)  # מחלקים את הזמן הכולל למקטעי ימים
+        print(f"The day for pepole arrive at : {current_date} ")
+        print(f"The day is dont go to breakfast: {current_date+1} ,{simulation.hotelSimulation.didnt_go_to_breakfast }")  # todo:delet
+        print(f"The day is  go to breakfast: {current_date+1}, {simulation.hotelSimulation.go_to_breakfast}")
+        simulation.scheduleEvent(calcbrefasteachday(self.time+24*60))
+
+
+
+class calccheckout(Event): #todo:delete
+    def __init__(self, time):
+        super().__init__(time)
+
+
+    def handle(self, simulation):
+        current_date = self.time // (24 * 60) +1 # מחלקים את הזמן הכולל למקטעי ימים
+        print(f"The total people did checkout  {simulation.hotelSimulation.group_checked_out} at day,{current_date} ")
+        print(f"The total people did checkout NO BREAKFAST  {simulation.hotelSimulation.count_pepole_NObrekfast_checkout} at day,{current_date} ")
+        print(f"The total people did checkout YES BREAKFAST {simulation.hotelSimulation.count_pepole_checkout_after_breakfast} at day,{current_date} ")
+        simulation.scheduleEvent(calccheckout(self.time + 24 * 60))
+
+
+
