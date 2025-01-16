@@ -167,18 +167,12 @@ class Booking:
         """
         return self.arrivalTime < other.arrivalTime
 
-    def initializeDailyActivities(self):
+    def resetDailyActivities(self):
         """
-        Set up daily activities for customers based on group category.
+        מאפסת את יומן הפעילויות של כל לקוח בהזמנה.
         """
-        activityMapping = {
-            "family": {"pool": [False, 0], "bar": [False, 0]},
-            "triple": {"pool": [False, 0], "bar": [False, 0]},
-            "couple": {"spa": [False, 0], "pool": [False, 0]},
-            "one": {"spa": [False, 0], "bar": [False, 0], "pool": [False, 0]}
-        }
         for customer in self.customers:
-            customer.dailyActivities = activityMapping.get(self.groupType, {}).copy()
+            customer.daily_activities, customer.maxWaitingTime = customer.initializeGroupAttributes()
 
 
 
@@ -281,12 +275,23 @@ class Facilities:  # spa, pool, and breakfast activities
         self.activityQueue = []  # Queue for guests waiting to participate
         self.groupListActivity = []  # List of groups currently in the activity
 
-    def checkActivityAvailability(self, booking):
+    def checkActivityAvailability(self, guest):
         """
         Check if the activity has enough capacity for a customer or group.
+        :param guest: אובייקט מסוג Booking או Customer.
+        :return: True אם יש מספיק מקום, אחרת False.
         """
-        requiredCapacity = booking.getGroupLength()
+        if isinstance(guest, Booking):  # אם האובייקט הוא הזמנה
+            requiredCapacity = guest.getGroupLength()  # גודל הקבוצה
+        elif isinstance(guest, Customer):  # אם האובייקט הוא לקוח בודד
+            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
+        else:
+            raise ValueError("Guest must be of type Booking or Customer")  # טיפול במקרה שגוי
+
+        # בדיקת זמינות על סמך התפוסה הנוכחית והקיבולת המקסימלית
         return self.currentOccupancy + requiredCapacity <= self.maxCapacity
+
+
 
     def checkIfQueueIsNotEmpty(self):
         """
@@ -294,22 +299,36 @@ class Facilities:  # spa, pool, and breakfast activities
         """
         return len(self.activityQueue) > 0
 
-    def addCustomerToActivity(self, booking):
+    def addCustomerToActivity(self, obj):
         """
-        Add a customer or group to the activity if there is enough capacity.
+        Mark spaces in the pool as occupied for a group (Booking) or an individual (Customer).
+        :param obj: אובייקט מסוג Booking או Customer.
         """
+        if isinstance(obj, Booking):  # אם האובייקט הוא הזמנה
+            requiredCapacity = obj.getGroupLength()  # גודל הקבוצה
+        elif isinstance(obj, Customer):  # אם האובייקט הוא לקוח בודד
+            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
+        else:
+            raise ValueError("Invalid object type. Must be Booking or Customer.")
 
-        requiredCapacity = booking.getGroupLength()
+        # עדכון התפוסה
         self.currentOccupancy += requiredCapacity
 
-
-    def endCustomerActivity(self, booking):
+    def endCustomerActivity(self, obj):
         """
         Remove a customer or group from the activity and free up capacity.
+        :param obj: אובייקט מסוג Booking או Customer.
         """
-        requiredCapacity = booking.getGroupLength()
-        self.currentOccupancy -= requiredCapacity
+        if isinstance(obj, Booking):  # אם האובייקט הוא הזמנה
+            requiredCapacity = obj.getGroupLength()  # גודל הקבוצה
+        elif isinstance(obj, Customer):  # אם האובייקט הוא לקוח בודד
+            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
+        else:
+            raise ValueError("Invalid object type. Must be Booking or Customer.")
 
+        # עדכון התפוסה
+        self.currentOccupancy -= requiredCapacity
+        print(f"Freed {requiredCapacity} spaces from the activity. Current occupancy: {self.currentOccupancy}")
 
     def checkIfInQueue(self, customer):
         """
@@ -339,6 +358,42 @@ class Pool(Facilities):
     def __init__(self):
         super().__init__(activityType="Pool", maxCapacity=50)
 
+
+class Bar:
+    def __init__(self):
+        """
+        Initialize the bar with two barmen and an empty queue.
+        """
+        self.barQueue = []  # Queue of guests waiting at the bar
+        self.num_barmen = 2  # Number of barmen
+        self.barmen_states = [False] * 2
+
+      # Barmen availability states (False = available, True = busy)
+
+    def findAvailableBarman(self):
+        """
+        Find an available barman.
+        :return: Index of an available barman if found, otherwise None.
+        """
+        for i, is_busy in enumerate(self.barmen_states):
+            if not is_busy:
+                return i
+        return None
+
+    def setBarmanStatus(self, barman_index, status):
+        """
+        Update the status of a barman.
+        :param barman_index: Index of the barman to update.
+        :param is_busy: True if the barman is busy, False if available.
+        """
+        self.barmen_states[barman_index] = status
+
+
+    def isInQueue(self, customer):
+        """
+        Check if a customer is already in the bar queue.
+        """
+        return customer in self.barQueue
 
 class Hotel:
     def __init__(self):
@@ -382,9 +437,11 @@ class Hotel:
         self.count_of_booking_go_to_pool_firstday=0#todo:delete
         self.count_of_booking_dont_go_to_pool_firstday = 0#todo:delete
 
+        self.bar = Bar()
 
 
-############rooms check in and check out#####################################################
+
+    ############rooms check in and check out#####################################################
     def check_and_assign_room(self, booking):
             """
             בודקת אם יש חדר פנוי עבור ההזמנה, ואם יש, מקצה אותו.
@@ -585,6 +642,16 @@ class Hotel:
         :return: אובייקט המתקן או None אם לא קיים.
         """
         return self.facilities.get(facility_name)
+
+    def resetAllBookingsDailyActivities(self):
+        """
+        מאפסת את יומני הפעילויות של כל ההזמנות שנמצאות בחדרים במלון.
+        """
+        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
+            for room in room_list:
+                if room.currentBooking:  # אם יש הזמנה פעילה בחדר
+                    room.currentBooking.resetDailyActivities()  # מאפס את יומן הפעילויות
+                    print(f"Daily activities reset for Booking {room.currentBooking.bookingId}.")
 
 
 import heapq
