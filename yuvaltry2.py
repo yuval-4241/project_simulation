@@ -245,8 +245,6 @@ class Booking:
         rank_sum = sum(customer.rank for customer in self.customers)
         return rank_sum / self.num_customers
 
-    def getGroupLength(self):  # Returns the number of customers
-        return self.numCustomers
 
     def maxWaitingTimeInQ(self):
         if self.groupType == "family":
@@ -292,7 +290,7 @@ class Facilities:  # spa, pool, and breakfast activities
         self.groupListActivity = []  # List of groups currently in the activity
 
     def checkActivityAvailabilityforagroup(self, booking):
-        requiredCapacity = booking.getGroupLength()  # גודל הקבוצה
+        requiredCapacity = booking.getGroupSize()  # גודל הקבוצה
         return self.currentOccupancy + requiredCapacity <= self.maxCapacity
 
     def checkActivityAvailabilityforagust(self):
@@ -391,7 +389,6 @@ class Hotel:
         self.check_in_queue = []#used
         self.check_out_queue = []#used
         self.lobby_queue = []#used
-        self.total_guest_groups=0 #todo:delete
         self.num_servers = 2  # מספר השרתים
         self.server_states = [False] * self.num_servers
         self.count_people_checkin = 0  #todo:delete
@@ -403,6 +400,7 @@ class Hotel:
         self.free_rooms_count = 110
         self.do_today_checkout=0#todo:delete
         self.nothaveroom=0
+        self.total_customers=0#todo:delete
 
         self.tables = [Table() for _ in range(12)]
         self.breakfast_queue = []  # Guests waiting for breakfast
@@ -431,93 +429,89 @@ class Hotel:
         self.count_Customers_family_go_to_bar=0
         self.count_Customers_family_dont_go_activity=0
         self.count_day_choose_activity=0
-        self.breakfast_count = 0  # כמות האנשים שהגיעו לארוחה
-        self.missed_breakfast_count = 0  # כמות האנשים שלא הגיעו
+        self.breakfast_list = []
 
-    def count_total_bookingsforbreakfast(self,current_time):
-        """
-        סופרת את כמות ההזמנות בכל החדרים במלון.
-        """
-        total_bookings = 0
-        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
-            for room in room_list:
-                if room.currentBooking and not room.currentBooking.isFirstDay(current_time):
-                    total_bookings += 1
-        return total_bookings
 
 
 
     ############rooms check in and check out#####################################################
     def check_and_assign_room(self, booking):
-            """
-            בודקת אם יש חדר פנוי עבור ההזמנה, ואם יש, מקצה אותו.
-            :param booking: אובייקט ההזמנה.
-            :return: מזהה החדר שהוקצה אם נמצא חדר, אחרת None.
-            """
-            booking_size = booking.getGroupSize()
-            room_list = []
+        """
+        בודקת אם יש חדר פנוי עבור ההזמנה, ואם יש, מקצה אותו.
+        :param booking: אובייקט ההזמנה.
+        :return: מזהה החדר שהוקצה אם נמצא חדר, אחרת None.
+        """
+        booking_size = booking.getGroupSize()
 
-            # בחירת רשימת חדרים מתאימה לפי גודל הקבוצה
-            if booking_size >= 4:
-                room_list = self.family_rooms  # חדרי משפחות
-            elif booking_size == 3:
-                room_list = self.triple_rooms  # חדרי טריפל
-            elif booking_size == 2:
-                # בדיקה אם אפשר להקצות סוויטה או חדר זוגי
-                room_list = self.suite_rooms if sampleIsSuite(2) else self.couple_rooms
-            elif booking_size == 1:
-                # בדיקה אם אפשר להקצות סוויטה או חדר יחיד
-                room_list = self.suite_rooms if sampleIsSuite(1) else self.couple_rooms
+        # בחירת רשימת חדרים מתאימה לפי גודל הקבוצה
+        if booking_size >= 4:
+            room_list = self.family_rooms
+        elif booking_size == 3:
+            room_list = self.triple_rooms
+        elif booking_size == 2:
+            room_list = self.suite_rooms if sampleIsSuite(2) else self.couple_rooms
+        elif booking_size == 1:
+            room_list = self.suite_rooms if sampleIsSuite(1) else self.couple_rooms
 
-            # חיפוש חדר פנוי ברשימה
+        # חיפוש חדר פנוי ברשימה
+        for room in room_list:
+            if room.isAvailable():
+                room.bookRoom(booking)  # הקצאת החדר להזמנה
+                return room.roomId  # מחזיר את מזהה החדר שהוקצה
+
+        # אם לא נמצא חדר פנוי
+        return None
+
+    def collectBreakfastBookings(self):
+        """
+        אוספת את כל ההזמנות הפעילות ומעדכנת את breakfast_list.
+        """
+        self.breakfast_list = []  # אתחול הרשימה
+        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
             for room in room_list:
-                if room.isAvailable():
-                    room.bookRoom(booking)  # הקצאת החדר להזמנה
-                    ##print(f"Assigned room {room.roomId} to booking {booking.bookingId}.")
-                    return room.roomId  # מחזיר את מזהה החדר שהוקצה
-
-            #אם לא נמצא חדר פנוי
-            return None
-
+                booking = room.getCurrentBooking()
+                if booking:  # אם יש הזמנה פעילה
+                    self.breakfast_list.append(booking)
+        print(f"Breakfast list updated: {len(self.breakfast_list)} bookings.")
 
     def calculateAvailableRoomsByTypeAtMidnight(self, current_date):
-            """
-            חישוב מספר החדרים הפנויים לפי סוגים ב-00:00 בהתחשב בחדרים שיעזבו ב-11:00.
-            :param current_date: תאריך היום הנוכחי (מספר ימים מאז ההתחלה).
-            :return: מילון עם מספר החדרים הפנויים לכל סוג חדר.
-            """
-            available_rooms = {
-                "family": 0,
-                "triple": 0,
-                "couple": 0,
-                "suite": 0,
-            }
+        """
+        חישוב מספר החדרים הפנויים לפי סוגים ב-00:00 בהתחשב בחדרים שיעזבו ב-11:00.
+        :param current_date: תאריך היום הנוכחי (מספר ימים מאז ההתחלה).
+        :return: מילון עם מספר החדרים הפנויים לכל סוג חדר.
+        """
+        available_rooms = { "family": 0, "triple": 0, "couple": 0, "suite": 0 }
 
-            # בדוק חדרים שמתפנים היום ב-11:00 עבור כל סוג חדר
-            for room_list, room_type in [
-                (self.family_rooms, "family"),
-                (self.triple_rooms, "triple"),
-                (self.couple_rooms, "couple"),
-                (self.suite_rooms, "suite")
-            ]:
-                for room in room_list:
-                    booking = room.getCurrentBooking()
+        for room_list, room_type in [
+            (self.family_rooms, "family"),
+            (self.triple_rooms, "triple"),
+            (self.couple_rooms, "couple"),
+            (self.suite_rooms, "suite")
+        ]:
+            for room in room_list:
+                booking = room.getCurrentBooking()
 
-                    # אם זה היום האחרון של ההזמנה, בצע צ'ק-אאוט וסמן את החדר כפנוי
-                    if booking and booking.isLastDay(current_date ):
-                        room.change_to_available_room()
-                        available_rooms[room_type] += 1
-                    # אם החדר כבר פנוי
-                    elif room.isAvailable():
-                        available_rooms[room_type] += 1
-            total_available = sum(available_rooms.values())
-            return total_available
+                # אם זה היום האחרון של ההזמנה, בצע צ'ק-אאוט וסמן את החדר כפנוי
+                if booking and booking.isLastDay(current_date):
+                    room.change_to_available_room()
+                    available_rooms[room_type] += 1
+                # אם החדר כבר פנוי
+                elif room.isAvailable():
+                    available_rooms[room_type] += 1
 
-    def count_free_rooms(self):#used
+        total_available = sum(available_rooms.values())
+        print(f"Total available rooms: {total_available}")
+        return available_rooms
+
+    def count_free_rooms(self):
+        """
+        סופר את מספר החדרים הפנויים בכל המלון.
+        :return: מספר החדרים הפנויים.
+        """
         return sum(
-            1 for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms] for room in
-            room_list if room.isAvailable())
-
+            1 for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]
+            for room in room_list if room.isAvailable()
+        )
 
     def release_room(self, booking):
         """
@@ -526,17 +520,11 @@ class Hotel:
         """
         for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
             for room in room_list:
-                if room.currentBooking == booking:
+                if room.getCurrentBooking() == booking:
                     room.change_to_available_room()  # מסמן את החדר כפנוי
-                    ##print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
+                    print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
                     return
-        ##print(f"No room found for Booking {booking.bookingId}.")
-
-
-###########################check in check out servers
-    def is_server_available(self):
-        """בודק אם יש שרת פנוי"""
-        return any(not busy for busy in self.servers_busy)
+        print(f"No room found for Booking {booking.bookingId}.")
 
     def find_available_server(self):
         for i, busy in enumerate(self.server_states):
@@ -546,25 +534,6 @@ class Hotel:
 
     def assign_to_server(self, server_id ):
         self.server_states[server_id] = True
-
-
-
-    def set_public_status(self, status):
-        self.public_open = status
-
-
-
-    def setCheckInOpen(self, status):
-        """
-        Set the status of the check-in process (open/close).
-        :param status: True to open, False to close.
-        """
-        self.check_in_open = status
-
-
-
-    def setPublicAccess(self,status):
-        self.public_open = status
 ####################################breakfast  ####################################################
     def find_available_table(self):
         """
@@ -574,9 +543,7 @@ class Hotel:
             if not table.is_occupied:
                 return index
         return None
-
 ####################update everyday hotel rank##########################################################
-
     def update_daily_rank(self):
         """
         עדכון הדירוג היומי לפי משוב הלקוחות.
@@ -717,12 +684,12 @@ class Simulation:
         Run the simulation by processing events until the end of simulation time.
         """
         self.scheduleEvent(OpenHotelEvent(480))
-        # פתיחת המלון ב-8 בבוקר
-        self.scheduleEvent(closeHotelDayEvent(0))
-        self.scheduleEvent(calcbrefasteachday(17 * 60))
+        self.scheduleEvent(OpenBreakfast(1830))#first meal
+
+        self.scheduleEvent(closeHotelDayEvent(24*60))
+        self.scheduleEvent(calcbrefasteachday(12 * 60))
         self.scheduleEvent(calccheckout(14 * 60))
         self.scheduleEvent(FamilyActivitySummaryEvent(47 * 60))
-        self.scheduleEvent(BreakfastSummaryEvent(17*60))
 
 
         # עיבוד האירועים עד שהסימולציה מסתיימת
@@ -737,8 +704,7 @@ class Simulation:
     def displaySimulationResults(self):
         """
         Display the final results of the simulation.
-        """
-        print("Total guest groups:", self.Hotel.total_guest_groups)  # סך כל הקבוצות שהתארחו במלון
+        """  # סך כל הקבוצות שהתארחו במלון
         print(f"Lobby queue size: {len(self.Hotel.lobby_queue)}")
 
 

@@ -1,4 +1,5 @@
 import  random
+import math
 import matplotlib.pyplot as plt
 
 def f_SPA(x):
@@ -77,14 +78,15 @@ def sampleExponential(lambda_val):
     """
     Generate a single sample from an exponential distribution.
     """
-    u = np.random.uniform()
-    return -np.log(1 - u) / lambda_val
+
+    u = random.random()
+    return -math.log(1 - u) / lambda_val
 
 def sampleStayDuration ():
     """
     Generate a random sample for stay duration.
     """
-    u = np.random.uniform()
+    u = random.random()
     if u <= 0.25:  # 0 עד 0.25
         return 1
     elif u <= 0.25 + 0.46:  # 0.25 עד 0.71
@@ -114,7 +116,7 @@ def sampleCustomerCount():
     """
     Sample the number of customers in a reservation.
     """
-    u = np.random.uniform()
+    u = random.random()
     if u <= 0.08 :
       return 4
     elif u >  0.08 and u <= 0.2 :
@@ -132,7 +134,7 @@ def sampleIsSuite(number_of_guests):
     Returns: bool: True if it's a suite (10% chance for <= 2 guests), False otherwise.
     """
     if number_of_guests <= 2:  # Only singles or couples can get a suite in 10% chance
-        u = np.random.uniform()
+        u = random.random()
         return u <= 0.1
     return False
 
@@ -146,13 +148,13 @@ def sampleBreakfastTime():
     """
     Generate a single sample for Breakfast time.
     """
-    return boxMuller(40, 100)
+    return round(boxMuller(40, 100))
 
 def sampleBreakfastRate():
     """
     Generate a single Check-In sample using an exponential distribution.
     """
-    lambda_breakfast = 15  # The check in lambda value obtained earlier
+    lambda_breakfast = 1/15  # The check in lambda value obtained earlier
     return sampleExponential(lambda_breakfast)
 
 
