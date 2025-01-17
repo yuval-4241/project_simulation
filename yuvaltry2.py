@@ -45,11 +45,11 @@ class Room:
         מסמן את החדר כפנוי ומשחרר את ההזמנה הנוכחית.
         """
         if self.currentBooking:  # אם יש הזמנה פעילה
-            print(f"Room of type {self.roomType} is now free.")
+            ##print(f"Room of type {self.roomType} is now free.")
             self.currentBooking = None  # שחרור ההזמנה
             self.available = True  # סימון החדר כפנוי
-        else:
-            print(f"Room of type {self.roomType} is already free.")
+        #else:
+            ##print(f"Room of type {self.roomType} is already free.")
 
 
 class Table:
@@ -77,6 +77,7 @@ class Customer:
         self.rank = 10
         self.groupType = groupType
         self.currentDay = 1
+        self.last_activity=None
         self.daily_activities, self.maxWaitingTime = self.initializeGroupAttributes()
 
     def initializeGroupAttributes(self):
@@ -172,6 +173,7 @@ class Booking:
         מאפסת את יומן הפעילויות של כל לקוח בהזמנה.
         """
         for customer in self.customers:
+            customer.lastActivity = None
             customer.daily_activities, customer.maxWaitingTime = customer.initializeGroupAttributes()
 
 
@@ -211,6 +213,20 @@ class Booking:
         # בדוק אם היום הנוכחי הוא היום האחרון לשהייה
         return current_day == last_day
 
+    def isFirstDay(self, currentTime):
+        """
+        Check if it's the first day of the group's stay.
+        :param currentTime: הזמן הנוכחי במונחי ימים.
+        :return: True אם זה היום הראשון לשהייה, אחרת False.
+        """
+        # חשב את היום של זמן ההגעה
+        arrival_day = self.arrivalTime // 1440 + 1
+
+        # חשב את היום הנוכחי
+        current_day = currentTime
+
+        # בדוק אם היום הנוכחי הוא היום הראשון לשהייה
+        return current_day == arrival_day
     def initialize_activities_dictionary(self):
         for customer in self.customers:
             activity_templates = {
@@ -264,7 +280,7 @@ class Booking:
         for customer in self.customers:
             total_expenses += customer.get_expenses()
 
-        print(f"Total group expenses: {total_expenses}")
+        ##print(f"Total group expenses: {total_expenses}")
         return total_expenses
 
 class Facilities:  # spa, pool, and breakfast activities
@@ -275,22 +291,13 @@ class Facilities:  # spa, pool, and breakfast activities
         self.activityQueue = []  # Queue for guests waiting to participate
         self.groupListActivity = []  # List of groups currently in the activity
 
-    def checkActivityAvailability(self, guest):
-        """
-        Check if the activity has enough capacity for a customer or group.
-        :param guest: אובייקט מסוג Booking או Customer.
-        :return: True אם יש מספיק מקום, אחרת False.
-        """
-        if isinstance(guest, Booking):  # אם האובייקט הוא הזמנה
-            requiredCapacity = guest.getGroupLength()  # גודל הקבוצה
-        elif isinstance(guest, Customer):  # אם האובייקט הוא לקוח בודד
-            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
-        else:
-            raise ValueError("Guest must be of type Booking or Customer")  # טיפול במקרה שגוי
-
-        # בדיקת זמינות על סמך התפוסה הנוכחית והקיבולת המקסימלית
+    def checkActivityAvailabilityforagroup(self, booking):
+        requiredCapacity = booking.getGroupLength()  # גודל הקבוצה
         return self.currentOccupancy + requiredCapacity <= self.maxCapacity
 
+    def checkActivityAvailabilityforagust(self):
+        requiredCapacity = 1  # מקום נדרש ללקוח יחיד
+        return self.currentOccupancy + requiredCapacity <= self.maxCapacity
 
 
     def checkIfQueueIsNotEmpty(self):
@@ -299,36 +306,18 @@ class Facilities:  # spa, pool, and breakfast activities
         """
         return len(self.activityQueue) > 0
 
-    def addCustomerToActivity(self, obj):
+    def addCustomerToActivity(self, num_of_guests):
         """
         Mark spaces in the pool as occupied for a group (Booking) or an individual (Customer).
         :param obj: אובייקט מסוג Booking או Customer.
         """
-        if isinstance(obj, Booking):  # אם האובייקט הוא הזמנה
-            requiredCapacity = obj.getGroupLength()  # גודל הקבוצה
-        elif isinstance(obj, Customer):  # אם האובייקט הוא לקוח בודד
-            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
-        else:
-            raise ValueError("Invalid object type. Must be Booking or Customer.")
 
-        # עדכון התפוסה
-        self.currentOccupancy += requiredCapacity
+        self.currentOccupancy += num_of_guests
 
-    def endCustomerActivity(self, obj):
-        """
-        Remove a customer or group from the activity and free up capacity.
-        :param obj: אובייקט מסוג Booking או Customer.
-        """
-        if isinstance(obj, Booking):  # אם האובייקט הוא הזמנה
-            requiredCapacity = obj.getGroupLength()  # גודל הקבוצה
-        elif isinstance(obj, Customer):  # אם האובייקט הוא לקוח בודד
-            requiredCapacity = 1  # מקום נדרש ללקוח יחיד
-        else:
-            raise ValueError("Invalid object type. Must be Booking or Customer.")
+    def endCustomerActivity(self, num_of_guests):
 
-        # עדכון התפוסה
-        self.currentOccupancy -= requiredCapacity
-        print(f"Freed {requiredCapacity} spaces from the activity. Current occupancy: {self.currentOccupancy}")
+        self.currentOccupancy -= num_of_guests
+        ##print(f"Freed {num_of_guests} spaces from the activity. Current occupancy: {self.currentOccupancy}")
 
     def checkIfInQueue(self, customer):
         """
@@ -438,6 +427,23 @@ class Hotel:
         self.count_of_booking_dont_go_to_pool_firstday = 0#todo:delete
 
         self.bar = Bar()
+        self.count_Customers_family_go_to_pool=0
+        self.count_Customers_family_go_to_bar=0
+        self.count_Customers_family_dont_go_activity=0
+        self.count_day_choose_activity=0
+        self.breakfast_count = 0  # כמות האנשים שהגיעו לארוחה
+        self.missed_breakfast_count = 0  # כמות האנשים שלא הגיעו
+
+    def count_total_bookingsforbreakfast(self,current_time):
+        """
+        סופרת את כמות ההזמנות בכל החדרים במלון.
+        """
+        total_bookings = 0
+        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
+            for room in room_list:
+                if room.currentBooking and not room.currentBooking.isFirstDay(current_time):
+                    total_bookings += 1
+        return total_bookings
 
 
 
@@ -467,7 +473,7 @@ class Hotel:
             for room in room_list:
                 if room.isAvailable():
                     room.bookRoom(booking)  # הקצאת החדר להזמנה
-                    print(f"Assigned room {room.roomId} to booking {booking.bookingId}.")
+                    ##print(f"Assigned room {room.roomId} to booking {booking.bookingId}.")
                     return room.roomId  # מחזיר את מזהה החדר שהוקצה
 
             #אם לא נמצא חדר פנוי
@@ -522,9 +528,9 @@ class Hotel:
             for room in room_list:
                 if room.currentBooking == booking:
                     room.change_to_available_room()  # מסמן את החדר כפנוי
-                    print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
+                    ##print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
                     return
-        print(f"No room found for Booking {booking.bookingId}.")
+        ##print(f"No room found for Booking {booking.bookingId}.")
 
 
 ###########################check in check out servers
@@ -577,15 +583,15 @@ class Hotel:
         """
         if self.rank_feedback:  # אם יש דירוגים
             self.daily_rank = sum(self.rank_feedback) / len(self.rank_feedback)-self.rate_for_breakfast
-            print(f"Updated review with - satisfaction from breakfast rank: {self.daily_rank}")
+            ##print(f"Updated review with - satisfaction from breakfast rank: {self.daily_rank}")
             total_waiting_time = sum(self.total_wait_forthisday)
 
             # חישוב עונש על זמני ההמתנה
             penalty = (total_waiting_time // 20) * 0.02  # כל 20 דקות מורידות 0.2 מהדירוג
             self.daily_rank = max(0, self.daily_rank - penalty)  # דירוג לא יורד מתחת ל
             # הדפסה
-            print(f"Total waiting time for this day: {total_waiting_time} minutes")
-            print(f"Updated daily rank: {self.daily_rank}")
+            ##print(f"Total waiting time for this day: {total_waiting_time} minutes")
+            ##print(f"Updated daily rank: {self.daily_rank}")
 
             # איפוס המערך ליום הבא
             self.total_wait_forthisday = []
@@ -651,7 +657,39 @@ class Hotel:
             for room in room_list:
                 if room.currentBooking:  # אם יש הזמנה פעילה בחדר
                     room.currentBooking.resetDailyActivities()  # מאפס את יומן הפעילויות
-                    print(f"Daily activities reset for Booking {room.currentBooking.bookingId}.")
+                    ##print(f"Daily activities reset for Booking {room.currentBooking.bookingId}.")
+
+    def count_family_customers(self, time):
+        """
+        סופר כמה לקוחות מסוג משפחות יש במלון.
+        :return: מספר הלקוחות מסוג משפחות.
+        """
+        family_customers_count = 0
+
+        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
+            for room in room_list:
+                booking = room.currentBooking
+                if booking and booking.groupType == "family" and not booking.isFirstDay(time) and not booking.isLastDay(time):
+                    family_customers_count += len(booking.customers)
+
+        return family_customers_count
+
+    def print_all_customers_status(self,current_time):
+        """
+        מדפיסה את מצב כל הלקוחות על בסיס החדרים במלון, כולל פעילותם הנוכחית.
+        """
+        print(f"\n--- Customer Status at {current_time}:00 ---")
+        total_customers = 0
+
+        # מעבר על כל סוגי החדרים במלון
+        for room_list in [self.family_rooms, self.triple_rooms, self.couple_rooms, self.suite_rooms]:
+            for room in room_list:
+                if room.currentBooking and not room.currentBooking.isFirstDay(current_time):  # אם יש הזמנה בחדר
+                    for customer in room.currentBooking.customers:  # מעבר על כל הלקוחות בהזמנה
+                        total_customers += 1
+                        print(f"Customer {customer.customerId}: {customer.daily_activities}")
+
+        print(f"Total customers for activities: {total_customers}")
 
 
 import heapq
@@ -683,6 +721,9 @@ class Simulation:
         self.scheduleEvent(closeHotelDayEvent(0))
         self.scheduleEvent(calcbrefasteachday(17 * 60))
         self.scheduleEvent(calccheckout(14 * 60))
+        self.scheduleEvent(FamilyActivitySummaryEvent(47 * 60))
+        self.scheduleEvent(BreakfastSummaryEvent(17*60))
+
 
         # עיבוד האירועים עד שהסימולציה מסתיימת
         while self.event_list and self.clock < self.simulationTime:
@@ -705,5 +746,5 @@ class Simulation:
 # הפעלת הסימולציה מחוץ למחלקה
 if __name__ == "__main__":
     # יצירת מופע של הסימולציה למשך 10 ימים
-    check = Simulation(60 * 24 * 8)  # 10 ימים
+    check = Simulation(60 * 24 * 10)  # 10 ימים
     check.run()

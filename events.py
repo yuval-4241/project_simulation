@@ -38,7 +38,7 @@ class closeHotelDayEvent(Event):
         available_rooms=simulation.Hotel.count_free_rooms()
         simulation.Hotel.resetAllBookingsDailyActivities()
         print(f"The total rooms occipud for the end of the day  : {current_date } is: {110-available_rooms}")
-        print(f"the total people who did check in today is {simulation.Hotel.count_people_checkin }")
+        print(f"the total people who did checkin today is {simulation.Hotel.count_people_checkin }")
         print(f"The total groups go to pool after checkin first day : {simulation.Hotel.count_of_booking_go_to_pool_firstday} ")#todo:delete
         print(
             f"The total groups dont go to pool after checkin first day : {simulation.Hotel.count_of_booking_dont_go_to_pool_firstday} ")#todo:delete
@@ -127,11 +127,11 @@ class CheckInDepartureEvent(Event):
                     customer.update_rank(rankDecrease)
             # תזמון ארוחות בוקר לכל יום שהייה
             simulation.scheduleEvent(FirstDayPoolEvent(self.time,self.booking))
-            start_day = int(self.booking.arrivalTime // 1440 + 1)
-            end_day = int(self.booking.arrivalTime // 1440 + 1 + self.booking.stayDuration)
+            start_day = int(self.booking.arrivalTime // 1440 )
+            end_day = int(self.booking.arrivalTime // 1440  + self.booking.stayDuration)
 
-            for day in range(start_day, end_day + 1):
-                breakfast_time = day * 1440 + (6.5 * 60) + sampleBreakfastRate()
+            for day in range(start_day+1, end_day+1 ):
+                breakfast_time = (day) * 1440 + (6.5 * 60) + sampleBreakfastTime()
                 simulation.scheduleEvent(BreakfastArrivalEvent(breakfast_time, self.booking))
 
             # תזמון צ'ק-אאוט ביום האחרון בשעה 11:00
@@ -203,6 +203,7 @@ class BreakfastArrivalEvent(Event):
         # בדיקה אם הזמן הוא במסגרת שעות פעילות חדר האוכל
         if not (breakfast_start_time <= local_time < breakfast_end_time):
             simulation.Hotel.didnt_go_to_breakfast += 1
+            simulation.Hotel.missed_breakfast_count+=1
             simulation.scheduleEvent(DailyActivityEvent(self.time, self.booking))
 
             #LISHLOAH LEPILOOTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -231,8 +232,12 @@ class BreakfastDepartureEvent(Event):
                 # שחרור השולחן
 
         simulation.Hotel.go_to_breakfast += 1
+        simulation.Hotel.breakfast_count+=1
         simulation.Hotel.tables[self.table_id].set_status(False)
-        print(f"Table {self.table_id} is now available.")
+        if not self.booking.isLastDay(self.time // 1440 + 1):
+            simulation.scheduleEvent(DailyActivityEvent(self.time, self.booking))
+
+    ###################print(f"Table {self.table_id} is now available.")
 
         # בדיקה אם זה היום האחרון והשעה כבר 11:00
         local_time = self.time % 1440  # הזמן הנוכחי ביום
@@ -248,15 +253,12 @@ class BreakfastDepartureEvent(Event):
             print(f"Booking {self.booking.bookingId} will go to checkout after breakfast.")
             simulation.Hotel.count_pepole_checkout_after_breakfast += 1
             self.booking.hasCheckedOut = True
-            simulation.scheduleEvent(CheckoutArrivalEvent(self.time, self.booking))
 
         for customer in self.booking.customers:
             if random.random() < 0.1:
                 print(f"Booking {self.booking.bookingId} did not enjoy the breakfast.")
                 rankDecrease=0.025
                 customer.update_rank(rankDecrease)
-
-        simulation.scheduleEvent(DailyActivityEvent(self.time, self.booking))
 
 
         # אם יש אנשים בתור, הושב אותם לשולחן שהתפנה
@@ -296,7 +298,7 @@ class calcbrefasteachday(Event): #todo:delete
 
     def handle(self, simulation):
         current_date = self.time // (24 * 60)  # מחלקים את הזמן הכולל למקטעי ימים
-        print(f"The day for pepole arrive at : {current_date} ")
+        print(f"The day for people arrive at : {current_date} ")
         print(f"The day is dont go to breakfast: {current_date+1} ,{simulation.Hotel.didnt_go_to_breakfast }")  # todo:delet
         print(f"The day is  go to breakfast: {current_date+1}, {simulation.Hotel.go_to_breakfast}")
         simulation.scheduleEvent(calcbrefasteachday(self.time+24*60))
@@ -315,9 +317,7 @@ class calccheckout(Event): #todo:delete
         print(f"The total people did checkout YES BREAKFAST {simulation.Hotel.count_pepole_checkout_after_breakfast} at day,{current_date} ")
         simulation.scheduleEvent(calccheckout(self.time + 24 * 60))
 
-
-
-class FirstDayPoolEvent(Event): #todo:recall from chek in depurtue
+class FirstDayPoolEvent(Event):
     def __init__(self, time,booking):
         super().__init__(time)
         self.booking = booking
@@ -330,13 +330,16 @@ class FirstDayPoolEvent(Event): #todo:recall from chek in depurtue
             return
         if not isinstance(self.booking, Booking):
             raise ValueError(f"Invalid type for booking in FirstDayPoolEvent: {type(self.booking)}")
-        if simulation.Hotel.getFacility("pool").checkActivityAvailability(self.booking):
-            simulation.Hotel.getFacility("pool").addCustomerToActivity(self.booking)
+        if simulation.Hotel.getFacility("pool").checkActivityAvailabilityforagroup(self.booking):
+            num_of_guest=self.booking.getGroupSize()
+            simulation.Hotel.getFacility("pool").addCustomerToActivity(num_of_guest)
             service_time=self.time+samplePoolSpent()
             simulation.scheduleEvent(FirstDayPoolDepartureEvent(service_time, self.booking))
         else:
             simulation.Hotel.count_of_booking_dont_go_to_pool_firstday += 1#todo:delete
             return
+
+
 class FirstDayPoolDepartureEvent(Event):
     def __init__(self, time,booking):
         super().__init__(time)
@@ -345,7 +348,7 @@ class FirstDayPoolDepartureEvent(Event):
     def handle(self, simulation):
         print(f"the booking number who came to pool after check-in is {self.booking.bookingId}")#todo:delete
         simulation.Hotel.count_of_booking_go_to_pool_firstday+=1#todo:delete
-        simulation.Hotel.getFacility("pool").endCustomerActivity(self.booking)#todo:delete
+        simulation.Hotel.getFacility("pool").endCustomerActivity(self.booking.getGroupSize())#todo:delete
 
 
 class DailyActivityEvent(Event):
@@ -355,6 +358,8 @@ class DailyActivityEvent(Event):
 
     def handle(self, simulation):
         group_type = self.booking.checkGroupType()
+        print(f"Customer {self.booking.bookingId} is scheduled for at time {self.time}.")
+        simulation.Hotel.count_day_choose_activity+=1
 
         if group_type == "family":
             for customer in self.booking.customers:
@@ -386,6 +391,8 @@ class PoolEvent(Event):
     def handle(self, simulation):
         local_time = self.time % 1440
         if local_time > 19 * 60:
+            if self.customer.checkGroupType() == "family":
+                simulation.Hotel.count_Customers_family_dont_go_activity += 1
             return
         if local_time<7*60:
             current_day = self.time // (24 * 60)
@@ -393,18 +400,19 @@ class PoolEvent(Event):
             simulation.scheduleEvent(PoolEvent(next_opening_time, self.customer))
 
         print(f"Customer {self.customer.customerId} from booking {self.customer.customerId} is at the pool.")
-        facility = simulation.hotel.getFacility("pool")
+        facility = simulation.Hotel.getFacility("pool")
 
         # עדכון המילון במצב הנוכחי
 
         self.customer.daily_activities["pool"][1] += 1  # העלאת מספר הפעמים שניסה להיכנס
-        if simulation.Hotel.getFacility("pool").checkActivityAvailability(self.customer):
-            simulation.Hotel.getFacility("pool").addCustomerToActivity(self.customer)
+        self.customer.last_activity = "pool"
+        if simulation.Hotel.getFacility("pool").checkActivityAvailabilityforagust():
+            simulation.Hotel.getFacility("pool").addCustomerToActivity(1)
             service_time=self.time+samplePoolSpent()
             simulation.scheduleEvent(PoolDepartureEvent(service_time, self.customer))
         else:
             facility.addToActivityQueue(self.customer)
-            simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer, facility.activity_queue))
+            simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer, facility.activityQueue))
 
 
 class BarEvent(Event):
@@ -413,17 +421,19 @@ class BarEvent(Event):
         self.customer = customer
 
     def handle(self, simulation):
-        available_barman = simulation.Hotel.findAvailableBarman()
+        self.customer.daily_activities["bar"][1] += 1
+        self.customer.last_activity = "bar"# העלאת מספר הפעמים שניסה להיכנס
+        available_barman = simulation.Hotel.bar.findAvailableBarman()
 
-        if available_barman:
+        if not available_barman:
             # אם יש ברמן זמין, הלקוח מתחיל לקבל שירות
-            available_barman.setBarmanStatus(available_barman,True)
+            simulation.Hotel.bar.setBarmanStatus(available_barman, True)
             print(f"Customer {self.customer.customerId} started bar service with {available_barman} at time {self.time}.")
             departure_time = self.time + sampleBarService()
             simulation.scheduleEvent(BarDepartureEvent(departure_time, self.customer, available_barman))
         else:
-                simulation.Hotel.barQueue.append(self.customer)
-                simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer,simulation.Hotel.barQueue))
+                simulation.Hotel.bar.barQueue.append(self.customer)
+                simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer,simulation.Hotel.bar.barQueue))
                 print(f"Customer {self.customer.customerId} added to the bar queue at time {self.time}.")
 
 
@@ -435,24 +445,28 @@ class SpaEvent(Event):
     def handle(self, simulation):
         local_time = self.time % 1440
         if local_time > 19 * 60:
+            if self.customer.checkGroupType() == "family":
+                simulation.Hotel.count_Customers_family_dont_go_activity += 1
             return
+
         if local_time < 7 * 60:
             current_day = self.time // (24 * 60)
             next_opening_time = (current_day * 24 * 60) + 7 * 60
             simulation.scheduleEvent(SpaEvent(next_opening_time, self.customer))
         print(f"Customer {self.customer.customerId} from booking ")
-        facility = simulation.hotel.getFacility("spa")
+        facility = simulation.Hotel.getFacility("spa")
 
         # עדכון המילון במצב הנוכחי
         self.customer.daily_activities["spa"][1] += 1  # העלאת מספר הפעמים שניסה להיכנס
-        if simulation.Hotel.getFacility("spa").checkActivityAvailability(self.customer):
-            simulation.Hotel.getFacility("spa").addCustomerToActivity(self.customer)
+        self.customer.last_activity = "spa"
+        if simulation.Hotel.getFacility("spa").checkActivityAvailabilityforagust():
+            simulation.Hotel.getFacility("spa").addCustomerToActivity(1)
             service_time=self.time+sampleSpa()
             simulation.scheduleEvent(SpaDepartureEvent(service_time, self.customer))
 
         else:
             facility.addToActivityQueue(self.customer)
-            simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer, facility.activity_queue))
+            simulation.scheduleEvent(RenegingEvent(self.time + self.customer.maxWaitingTime, self.customer, facility.activityQueue))
 
 
 class PoolDepartureEvent(Event):
@@ -462,25 +476,22 @@ class PoolDepartureEvent(Event):
 
     def handle(self, simulation):
         # קבלת האובייקט של הספא
-        facility = simulation.hotel.getFacility("pool")
-
+        facility = simulation.Hotel.getFacility("pool")
+        self.customer.daily_activities["pool"][0] = True
         # שחרור הלקוח מהפעילות
-        facility.endCustomerActivity(self.customer)
+        facility.endCustomerActivity(1)
+
         print(f"Customer {self.customer.customerId} left the pool at time {self.time}.")
+        if self.customer.checkGroupType() == "family":
+            simulation.Hotel.count_Customers_family_go_to_pool += 1
 
-        if facility.hasQueue():
+        if facility.checkIfQueueIsNotEmpty():
             # הוצאת הלקוח הבא מהתור ומחיקתו
-            next_customer = facility.queue.pop(0)  # הלקוח הראשון בתור
-
-            # עדכון הפעילות ביומן של הלקוח
-            next_customer.daily_activities["pool"][0] = True
-            next_customer.daily_activities["pool"][1] += 1
-
+            next_customer = facility.activityQueue.pop(0)  # הלקוח הראשון בתור
             # חישוב זמן השירות ללקוח הבא
-            service_time = self.time + facility.sampleServiceTime()
-
+            service_time = self.time + samplePoolSpent()
             # הכנסת הלקוח לפעילות
-            facility.addCustomerToActivity(next_customer)
+            facility.addCustomerToActivity(1)
             print(f"Customer {next_customer.customerId} started pool activity at time {self.time}.")
 
             # תזמון אירוע עזיבת הבריכה עבור הלקוח הבא
@@ -498,17 +509,18 @@ class BarDepartureEvent(Event):
         Handles the departure of a customer from the bar.
         """
         # שחרור הברמן
-        self.barman.setBarmanStatus(False)
+        simulation.Hotel.bar.setBarmanStatus(self.barman , False)
         print(f"Barman {self.barman} finished serving Customer {self.customer.customerId} at time {self.time}.")
-
+        if self.customer.checkGroupType() == "family":
+            simulation.Hotel.count_Customers_family_go_to_bar += 1
+        self.customer.daily_activities["bar"][0] = True
         # אם יש אנשים בתור
-        bar = simulation.Hotel.getFacility("bar")
-        if bar.barQueue:
+        if simulation.Hotel.bar.barQueue:
             # הוצאת הלקוח הבא מהתור
-            next_customer = bar.barQueue.pop(0)
+            next_customer = simulation.Hotel.bar.barQueue.pop(0)
 
             # התחלת שירות ללקוח הבא עם הברמן הפנוי
-            self.barman.setBarmanStatus(True)
+            simulation.Hotel.bar.setBarmanStatus(self.barman, True)
             print(f"Customer {next_customer.customerId} started bar service with {self.barman} at time {self.time}.")
 
             # חישוב זמן השירות ללקוח הבא
@@ -524,83 +536,121 @@ class SpaDepartureEvent(Event):
         self.customer = customer
 
     def handle(self, simulation):
-        facility = simulation.hotel.getFacility("spa")
+        facility = simulation.Hotel.getFacility("spa")
 
-        facility.endCustomerActivity(self.customer)
+        facility.endCustomerActivity(1)
         print(f"Customer {self.customer.customerId} left the spa at time {self.time}.")
+        self.customer.daily_activities["spa"][0] = True
 
-        if facility.hasQueue():
+        if facility.checkIfQueueIsNotEmpty():
             # הוצאת הלקוח הבא מהתור ומחיקתו
-            next_customer = facility.queue.pop(0)  # הלקוח הראשון בתור
+            next_customer = facility.activityQueue.pop(0)  # הלקוח הראשון בתור
 
-            # עדכון הפעילות ביומן של הלקוח
-            next_customer.daily_activities["spa"][0] = True
-            next_customer.daily_activities["spa"][1] += 1
-
-            # חישוב זמן השירות ללקוח הבא
             service_time = self.time + sampleSpa()
 
             # הכנסת הלקוח לפעילות
-            facility.addCustomerToActivity(next_customer)
+            facility.addCustomerToActivity(1)
             print(f"Customer {next_customer.customerId} started spa activity at time {self.time}.")
 
             # תזמון אירוע עזיבת הספא עבור הלקוח הבא
             simulation.scheduleEvent(SpaDepartureEvent(service_time, next_customer))
 
 
-
-
-
-
 class RenegingEvent(Event):
-    def __init__(self, time, customer,activity_queues):
+    def __init__(self, time, customer, activity_queues):
         super().__init__(time)
         self.customer = customer
         self.activity_queues = activity_queues
 
+
     def handle(self, simulation):
-        """
-        טיפול באירוע Reneging:
-        1. מחיקת הלקוח מהתור הנוכחי.
-        2. תזמון הפעילות הבאה לפי המילון של הלקוח.
-        """
-
-        if self.customer in self.activity_queues:
-            # מחיקת הלקוח מהתור הנוכחי
+        if self.customer not in self.activity_queues:
+            print(f"Customer {self.customer.customerId} is not in the queue at time {self.time}.")
+            return
+        if any(status[0] for status in self.customer.daily_activities.values()):
+            print(f"Customer {self.customer.customerId} has already succeeded in an activity. Removing from queue.")
             self.activity_queues.remove(self.customer)
-        print(f"Handling RenegingEvent for Customer {self.customer.customerId} at time {self.time}.")
+            return
 
-        # מציאת הפעילות הבאה ביומן
+        # הדפסת פרטים
+        print(f"Customer {self.customer.customerId} entered RenegingEvent at time {self.time}.")
+        print(
+            f"Customer {self.customer.customerId} of type {self.customer.groupType} entered RenegingEvent at time {self.time}.")
+        print(f"Customer's daily activities: {self.customer.daily_activities}")
+        self.activity_queues.remove(self.customer)  # הסרה מהתור
+        last_activity = self.customer.last_activity
+
+        # בחירת פעילות הבאה
         next_activity = None
         for activity, status in self.customer.daily_activities.items():
-            if not status[0] and status[1] == 0:  # הפעילות לא בוצעה בכלל
+            if not status[0] and status[1] < 2 and activity != last_activity:
                 next_activity = activity
                 break
 
-            # אם כל הפעילויות כבר בוצעו פעם אחת, מחפשים פעילות עם פחות משני ניסיונות
         if next_activity is None:
-            for activity, status in self.customer.daily_activities.items():
-                if status[1] < 2:  # הפעילות בוצעה פחות משני ניסיונות
-                    next_activity = activity
-                    break
+            if all(status[1] >= 2 for status in self.customer.daily_activities.values()):
+                if self.customer.checkGroupType() == "family":
+                    simulation.Hotel.count_Customers_family_dont_go_activity += 1
+                    print(f"Customer {self.customer.customerId} did not succeed in any activity.")
+            return
+
+        self.customer.last_activity = next_activity
+        if next_activity == "bar":
+            simulation.scheduleEvent(BarEvent(self.time, self.customer))
+        elif next_activity == "pool":
+            simulation.scheduleEvent(PoolEvent(self.time, self.customer))
+        elif next_activity == "spa":
+            simulation.scheduleEvent(SpaEvent(self.time, self.customer))
+
+        print(f"Customer {self.customer.customerId} is scheduled for {next_activity} at time {self.time}.")
 
 
-        # אם יש פעילות הבאה
-        if next_activity:
-            # סימון הפעילות ביומן
-            self.customer.daily_activities[next_activity][0] = True
 
-            # תזמון האירוע הבא
-            if next_activity == "pool":
-                simulation.scheduleEvent(PoolEvent(self.time, self.customer))
-            elif next_activity == "bar":
-                simulation.scheduleEvent(BarEvent(self.time, self.customer))
-            elif next_activity == "spa":
-                simulation.scheduleEvent(SpaEvent(self.time, self.customer))
-            else:
-                print(f"Unknown activity: {next_activity}")
-        else:
-            print(f"Customer {self.customer.customerId} has completed all activities for the day.")
+class FamilyActivitySummaryEvent(Event):
+    def __init__(self, time):
+        super().__init__(time)
 
+
+    def handle(self, simulation):
+        # הדפסת סיכום הפעילות למשפחות
+        print("Family Activity Summary:")
+        print(f"Customers from families who went to the pool: {simulation.Hotel.count_Customers_family_go_to_pool}")
+        print(f"Customers from families who went to the bar: {simulation.Hotel.count_Customers_family_go_to_bar}")
+        print(
+            f"Customers from families who did not participate in any activity: {simulation.Hotel.count_Customers_family_dont_go_activity}")
+
+        # הדפסת מספר הלקוחות ממשפחות במלון
+        family_customers_count = simulation.Hotel.count_family_customers(self.time)
+        print(f"Total customers from families in the hotel: {family_customers_count}")
+        print(f"Total customers that go to choose activty: {simulation.Hotel.count_day_choose_activity}")
+
+
+        simulation.Hotel.print_all_customers_status(self.time)
+        # איפוס המשתנים
+        simulation.Hotel.count_Customers_family_go_to_pool = 0
+        simulation.Hotel.count_Customers_family_go_to_bar = 0
+        simulation.Hotel.count_Customers_family_dont_go_activity = 0
+        simulation.Hotel.count_day_choose_activity=0
+        simulation.scheduleEvent(FamilyActivitySummaryEvent(self.time+24*60))
+
+
+class BreakfastSummaryEvent(Event):
+    def __init__(self, time):
+        super().__init__(time)
+
+    def handle(self, simulation):
+        total_bookings =simulation.Hotel.count_total_bookingsforbreakfast(self.time//1440+1)
+
+        arrived = simulation.Hotel.breakfast_count
+        missed = simulation.Hotel.missed_breakfast_count
+
+        print(f"--- Breakfast Attendance Summary at {self.time}:00 ---")
+        print(f"Total bookings for breakfast: {total_bookings}")
+        print(f"Arrived for breakfast: {arrived}")
+        print(f"Missed breakfast: {missed}")
+        simulation.scheduleEvent(BreakfastSummaryEvent(self.time+24*60))
+        # Reset counts
+        simulation.Hotel.breakfast_count = 0
+        simulation.Hotel.missed_breakfast_count = 0
 
 
