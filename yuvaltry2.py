@@ -391,7 +391,7 @@ class Hotel:
         self.lobby_queue = []#used
         self.num_servers = 2  # מספר השרתים
         self.server_states = [False] * self.num_servers
-        self.count_people_checkin = 0  #todo:delete
+        #self.count_people_checkin = 0  #todo:delete
 
         self.family_rooms = [Room("family") for _ in range(30)]  # 30 חדרי משפחה
         self.triple_rooms = [Room("triple") for _ in range(40)]  # 40 חדרי טריפל
@@ -500,7 +500,7 @@ class Hotel:
                     available_rooms[room_type] += 1
 
         total_available = sum(available_rooms.values())
-        print(f"Total available rooms: {total_available}")
+        #print(f"Total available rooms: {total_available}")
         return available_rooms
 
     def count_free_rooms(self):
@@ -522,9 +522,9 @@ class Hotel:
             for room in room_list:
                 if room.getCurrentBooking() == booking:
                     room.change_to_available_room()  # מסמן את החדר כפנוי
-                    print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
+                    #print(f"Booking {booking.bookingId} checked out. Room {room.roomId} is now free.")
                     return
-        print(f"No room found for Booking {booking.bookingId}.")
+        #print(f"No room found for Booking {booking.bookingId}.")
 
     def find_available_server(self):
         for i, busy in enumerate(self.server_states):
@@ -659,6 +659,13 @@ class Hotel:
         print(f"Total customers for activities: {total_customers}")
 
 
+    def get_total_customers_in_breakfast_list(self):
+        """
+        מחזירה את סך כל הלקוחות ברשימת ארוחות הבוקר.
+        """
+        return sum(booking.getGroupSize() for booking in self.breakfast_list)
+
+
 import heapq
 
 class Simulation:
@@ -705,12 +712,12 @@ class Simulation:
         """
         Display the final results of the simulation.
         """  # סך כל הקבוצות שהתארחו במלון
-        print(f"Lobby queue size: {len(self.Hotel.lobby_queue)}")
+        #print(f"Lobby queue size: {len(self.Hotel.lobby_queue)}")
 
 
 
 # הפעלת הסימולציה מחוץ למחלקה
 if __name__ == "__main__":
     # יצירת מופע של הסימולציה למשך 10 ימים
-    check = Simulation(60 * 24 * 10)  # 10 ימים
+    check = Simulation(60 * 24 * 5)  # 10 ימים
     check.run()

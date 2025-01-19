@@ -47,11 +47,7 @@ def samplePoolSpent():
         x = 8 * u - 4
     return x
 
-"""<div style="direction:rtl" dir="rtl">
 
- ### <u>אלגוריתמי דגימה</u>
-
-"""
 
 import math
 import numpy as np
@@ -154,7 +150,7 @@ def sampleBreakfastRate():
     """
     Generate a single Check-In sample using an exponential distribution.
     """
-    lambda_breakfast = 1/15  # The check in lambda value obtained earlier
+    lambda_breakfast = 0.25 # The check in lambda value obtained earlier
     return sampleExponential(lambda_breakfast)
 
 
@@ -177,10 +173,6 @@ def sampleCustomerArrival(hotel, H=7, R_available=120):
 
     # Sample the inter-arrival time
     return np.random.exponential(1 / lambda_value) if lambda_value > 0 else float('inf')
-
-
-
-
 
 def sampleCustomerArrival(lambda_val):
     """
